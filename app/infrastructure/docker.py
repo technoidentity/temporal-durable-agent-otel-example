@@ -70,7 +70,7 @@ def _http_ok(url: str) -> bool:
         return False
 
 
-def _required_checks(settings: AppSettings) -> list[ServiceCheck]:
+def _required_checks(settings: AppSettings, *, worker_only: bool) -> list[ServiceCheck]:
     infra = settings.infrastructure
     obs = settings.observability
     checks: list[ServiceCheck] = []
@@ -85,20 +85,28 @@ def _required_checks(settings: AppSettings) -> list[ServiceCheck]:
         ok = _tcp_ok(obs.otel.endpoint)
         checks.append(ServiceCheck("otel_collector", ok, obs.otel.endpoint))
 
-    if infra.services.prometheus:
-        ok = _http_ok(infra.prometheus_url.rstrip("/") + "/-/healthy")
-        checks.append(ServiceCheck("prometheus", ok, infra.prometheus_url))
+    # Prometheus and Grafana are the observability *backend*, downstream of the
+    # collector. They are not runtime dependencies of the worker, so they are
+    # skipped when checking only what the worker needs to start.
+    if not worker_only:
+        if infra.services.prometheus:
+            ok = _http_ok(infra.prometheus_url.rstrip("/") + "/-/healthy")
+            checks.append(ServiceCheck("prometheus", ok, infra.prometheus_url))
 
-    if infra.services.grafana:
-        ok = _http_ok(infra.grafana_url.rstrip("/") + "/api/health")
-        checks.append(ServiceCheck("grafana", ok, infra.grafana_url))
+        if infra.services.grafana:
+            ok = _http_ok(infra.grafana_url.rstrip("/") + "/api/health")
+            checks.append(ServiceCheck("grafana", ok, infra.grafana_url))
 
     return checks
 
 
-def check_services(settings: AppSettings) -> list[ServiceCheck]:
-    """Run all configured health checks and return their results."""
-    return _required_checks(settings)
+def check_services(settings: AppSettings, *, worker_only: bool = False) -> list[ServiceCheck]:
+    """Run health checks and return their results.
+
+    ``worker_only`` limits the checks to the worker's own dependencies (Temporal
+    and, when observability is on, the OTel collector).
+    """
+    return _required_checks(settings, worker_only=worker_only)
 
 
 def _docker_available() -> bool:
@@ -126,10 +134,12 @@ def compose_down(settings: AppSettings) -> None:
         raise DockerUnavailableError(f"'docker compose down' failed:\n{result.stderr}")
 
 
-async def wait_until_healthy(settings: AppSettings, timeout: int) -> None:
+async def wait_until_healthy(
+    settings: AppSettings, timeout: int, *, worker_only: bool = False
+) -> None:
     deadline = time.monotonic() + timeout
     while True:
-        checks = check_services(settings)
+        checks = check_services(settings, worker_only=worker_only)
         if all(c.ok for c in checks):
             return
         if time.monotonic() >= deadline:
@@ -147,7 +157,7 @@ async def ensure_infrastructure(settings: AppSettings) -> None:
     * If ``auto_start`` is enabled, bring Compose up and wait for health.
     * If ``auto_start`` is disabled, fail clearly (no Docker commands run).
     """
-    checks = check_services(settings)
+    checks = check_services(settings, worker_only=True)
     missing = [c for c in checks if not c.ok]
     if not missing:
         return
@@ -160,4 +170,4 @@ async def ensure_infrastructure(settings: AppSettings) -> None:
         )
 
     compose_up(settings)
-    await wait_until_healthy(settings, infra.startup_timeout_seconds)
+    await wait_until_healthy(settings, infra.startup_timeout_seconds, worker_only=True)

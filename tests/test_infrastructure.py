@@ -23,6 +23,14 @@ def test_check_services_reports_status(monkeypatch):
     assert checks["grafana"] is False
 
 
+def test_worker_only_excludes_backend(monkeypatch):
+    monkeypatch.setattr(infra, "_tcp_ok", lambda target: True)
+    monkeypatch.setattr(infra, "_http_ok", lambda url: True)
+    names = {c.name for c in infra.check_services(AppSettings(), worker_only=True)}
+    assert names == {"temporal", "otel_collector"}
+    assert "prometheus" not in names and "grafana" not in names
+
+
 async def test_ensure_infra_noop_when_all_healthy(monkeypatch):
     monkeypatch.setattr(infra, "_tcp_ok", lambda target: True)
     monkeypatch.setattr(infra, "_http_ok", lambda url: True)
