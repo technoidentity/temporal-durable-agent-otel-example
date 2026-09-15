@@ -1,0 +1,156 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 0,
+  "schemaVersion": 39,
+  "tags": ["temporal", "langgraph", "otel"],
+  "title": "Temporal LangGraph Agent",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Temporal Worker / SDK",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100
+    },
+    {
+      "type": "timeseries",
+      "title": "Workflow success / failure (rate)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "id": 1,
+      "targets": [
+        { "expr": "sum(rate(temporal_workflow_completed_total[5m]))", "legendFormat": "completed" },
+        { "expr": "sum(rate(temporal_workflow_failed_total[5m]))", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Activity success / failure (rate)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "id": 2,
+      "targets": [
+        { "expr": "sum(rate(temporal_activity_execution_latency_seconds_count[5m]))", "legendFormat": "executed" },
+        { "expr": "sum(rate(temporal_activity_execution_failed_total[5m]))", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Activity execution latency (p95, s)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "id": 3,
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(temporal_activity_execution_latency_seconds_bucket[5m])) by (le))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Worker task slots (used / available)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 9 },
+      "id": 4,
+      "targets": [
+        { "expr": "sum(temporal_worker_task_slots_used) by (worker_type)", "legendFormat": "used {{worker_type}}" },
+        { "expr": "sum(temporal_worker_task_slots_available) by (worker_type)", "legendFormat": "available {{worker_type}}" }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "Worker utilization",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 9 },
+      "id": 5,
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } },
+      "targets": [
+        { "expr": "sum(temporal_worker_task_slots_used) / clamp_min(sum(temporal_worker_task_slots_used) + sum(temporal_worker_task_slots_available), 1)", "legendFormat": "utilization" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Pollers by type",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 9 },
+      "id": 6,
+      "targets": [
+        { "expr": "sum(temporal_num_pollers) by (poller_type)", "legendFormat": "{{poller_type}}" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Agent (custom metrics)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "id": 101
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM calls (rate)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 18 },
+      "id": 7,
+      "targets": [
+        { "expr": "sum(rate(agent_llm_calls_total[5m])) by (model, status)", "legendFormat": "{{model}} {{status}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM duration (p95, s)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 18 },
+      "id": 8,
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(agent_llm_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool calls (rate)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 18 },
+      "id": 9,
+      "targets": [
+        { "expr": "sum(rate(agent_tool_calls_total[5m])) by (tool_name, status)", "legendFormat": "{{tool_name}} {{status}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool duration (p95, s)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 18 },
+      "id": 10,
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(agent_tool_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Agent workflow requests / failures",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "id": 11,
+      "targets": [
+        { "expr": "sum(rate(agent_workflow_requests_total[5m]))", "legendFormat": "requests" },
+        { "expr": "sum(rate(agent_workflow_failures_total[5m]))", "legendFormat": "failures" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Temporal Cloud (no data unless Cloud metrics enabled)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "id": 102
+    },
+    {
+      "type": "timeseries",
+      "title": "Temporal Cloud backlog",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 35 },
+      "id": 12,
+      "targets": [
+        { "expr": "sum(temporal_cloud_v0_poll_success_count) by (temporal_namespace)", "legendFormat": "{{temporal_namespace}}" }
+      ]
+    }
+  ]
+}

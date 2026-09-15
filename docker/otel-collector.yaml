@@ -1,0 +1,78 @@
+# OpenTelemetry Collector configuration.
+#
+# Pipeline:  application/worker --OTLP--> collector --Prometheus exposition-->
+#            Prometheus --> Grafana.  Traces go to the debug exporter by default;
+#            a Tempo exporter is stubbed below so it can be enabled later.
+#
+# Requires the *contrib* collector image because the optional Temporal Cloud
+# scrape uses the Prometheus receiver.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # --- Optional: Temporal Cloud service metrics -------------------------------
+  # Temporal Cloud exposes an OpenMetrics endpoint. This is a SEPARATE telemetry
+  # source from the worker SDK metrics. To enable, set TEMPORAL_METRICS_API_KEY
+  # in the collector's environment and add `prometheus/temporal_cloud` to the
+  # metrics pipeline receivers below.
+  prometheus/temporal_cloud:
+    config:
+      scrape_configs:
+        - job_name: temporal-cloud
+          scrape_interval: 60s
+          scheme: https
+          metrics_path: /v1/metrics
+          authorization:
+            type: Bearer
+            credentials: ${env:TEMPORAL_METRICS_API_KEY}
+          static_configs:
+            - targets: [metrics.temporal.io]
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+  batch: {}
+  resource:
+    attributes:
+      - key: collector.name
+        value: otel-collector
+        action: upsert
+
+exporters:
+  # Exposes /metrics for Prometheus to scrape (OTLP -> Collector -> Prometheus).
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: true
+  # Traces: printed by default. Swap to Tempo by uncommenting otlp/tempo below
+  # and adding it to the traces pipeline exporters.
+  debug:
+    verbosity: normal
+  # otlp/tempo:
+  #   endpoint: tempo:4317
+  #   tls:
+  #     insecure: true
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      # Add `prometheus/temporal_cloud` here to converge Cloud metrics too.
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [debug]

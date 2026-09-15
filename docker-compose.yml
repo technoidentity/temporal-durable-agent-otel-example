@@ -1,0 +1,123 @@
+# Local infrastructure for the reference application.
+#
+#   Temporal gRPC   localhost:7233
+#   Temporal UI     localhost:8233
+#   OTLP gRPC       localhost:4317
+#   OTLP HTTP       localhost:4318
+#   Collector /metrics (Prometheus exposition)  localhost:8889
+#   Prometheus      localhost:9090
+#   Grafana         localhost:3000
+#
+# The Python application reads all of these from config; nothing here is
+# hardcoded on the Python side. The `worker` service is optional and only
+# started with `--profile app`.
+
+name: temporal-langgraph-agent
+
+services:
+  postgresql:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  temporal:
+    image: temporalio/auto-setup:1.28.1
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: postgresql
+    ports:
+      - "7233:7233"
+    healthcheck:
+      test: ["CMD", "temporal", "workflow", "list", "--address", "temporal:7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8233:8080"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    command: ["--config=/etc/otel-collector.yaml"]
+    volumes:
+      - ./docker/otel-collector.yaml:/etc/otel-collector.yaml:ro
+    environment:
+      # Only used when the Temporal Cloud scrape is enabled in the collector config.
+      TEMPORAL_METRICS_API_KEY: ${TEMPORAL_METRICS_API_KEY:-}
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+      - "13133:13133"
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    depends_on:
+      - otel-collector
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+
+  # Optional: run the worker inside the stack with `docker compose --profile app up`.
+  worker:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    depends_on:
+      temporal:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      INFRA_AUTO_START: "false"
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+
+volumes:
+  postgresql-data:
+  prometheus-data:
+  grafana-data:
