@@ -1,0 +1,77 @@
+# App services only, as Docker containers with clear names.
+#
+# Connects to whatever Temporal + OTel Collector you already run on the host
+# (via host.docker.internal); it does NOT start Temporal/Prometheus/Grafana.
+# The agents talk to each other by service name on this compose network.
+#
+#   docker compose -f docker-compose.app.yml up -d --build
+#
+#   pepsico-ui               http://localhost:8000
+#   pepsico-servicenow-agent http://localhost:8801
+#   pepsico-peer-agent       http://localhost:8802
+#
+# Secrets are read from the repo .env (compose loads it automatically).
+
+name: pepsico-agent
+
+x-app: &app
+  image: pepsico-agent-app:local
+  build:
+    context: .
+    dockerfile: docker/worker.Dockerfile
+  environment:
+    APP_CONFIG_FILE: config/config.docker.yaml
+    # Point at the Temporal + collector you already run on the host. Hardcoded to
+    # the host gateway (not ${...}) so a host-oriented .env cannot override them
+    # with localhost, which inside a container means the container itself.
+    TEMPORAL_ADDRESS: host.docker.internal:7233
+    TEMPORAL_NAMESPACE: default
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4317
+    LLM_PROVIDER: ${LLM_PROVIDER:-lyzr}
+    LYZR_API_KEY: ${LYZR_API_KEY:-}
+    LYZR_AGENT_ID: ${LYZR_AGENT_ID:-}
+    ARIZE_ENABLED: ${ARIZE_ENABLED:-false}
+    ARIZE_TRANSPORT: ${ARIZE_TRANSPORT:-app}
+    ARIZE_OTLP_ENDPOINT: ${ARIZE_OTLP_ENDPOINT:-https://otlp.arize.com/v1}
+    ARIZE_SPACE_ID: ${ARIZE_SPACE_ID:-}
+    ARIZE_API_KEY: ${ARIZE_API_KEY:-}
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  volumes:
+    - ./config:/app/config:ro
+    # Live source: UI/static edits apply on browser refresh; Python changes apply
+    # on `make app-restart` (no rebuild needed for iteration).
+    - ./app:/app/app:ro
+  restart: unless-stopped
+
+services:
+  # Service keys (servicenow-agent, peer-agent) are the DNS names the worker
+  # uses (see config/config.docker.yaml a2a.agents); container_name is just the
+  # friendly name shown in `docker ps`.
+  servicenow-agent:
+    <<: *app
+    container_name: pepsico-servicenow-agent
+    command: ["python", "-m", "app.entrypoints.servicenow_agent", "--port", "8801"]
+    ports:
+      - "8801:8801"
+
+  peer-agent:
+    <<: *app
+    container_name: pepsico-peer-agent
+    command: ["python", "-m", "app.entrypoints.a2a_server", "--name", "peer", "--port", "8802", "--handler", "echo"]
+    ports:
+      - "8802:8802"
+
+  worker:
+    <<: *app
+    container_name: pepsico-worker
+    command: ["python", "-m", "app.entrypoints.worker"]
+    depends_on:
+      - servicenow-agent
+
+  ui:
+    <<: *app
+    container_name: pepsico-ui
+    command: ["python", "-m", "app.entrypoints.ui", "--port", "8000"]
+    ports:
+      - "8000:8000"

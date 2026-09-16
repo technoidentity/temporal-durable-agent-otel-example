@@ -41,3 +41,22 @@ services: ## Interactive start/stop/status for infra + worker
 
 ui: ## Run the demo UI control plane (http://localhost:8000)
 	$(PYTHON) -m app.entrypoints.ui
+
+# --- App services as Docker containers (worker, agents, UI) ------------------
+# Connects to the Temporal + OTel collector you already run on the host.
+APP_COMPOSE = docker compose -f docker-compose.app.yml
+
+app-up: ## Build + start app containers (pepsico-worker/ui/servicenow-agent/peer-agent)
+	$(APP_COMPOSE) up -d --build
+
+app-down: ## Stop and remove the app containers
+	$(APP_COMPOSE) down
+
+app-restart: ## Restart app containers (apply Python changes; static is live)
+	$(APP_COMPOSE) restart
+
+app-status: ## Show app container status
+	$(APP_COMPOSE) ps
+
+app-logs: ## Tail app container logs (make app-logs S=worker for one)
+	$(APP_COMPOSE) logs -f $(S)
