@@ -83,6 +83,33 @@ def build_llm(cfg: LLMConfig) -> BaseChatModel:
             temperature=cfg.temperature,
         )
 
+    if cfg.provider is LLMProvider.ollama:
+        # Ollama exposes an OpenAI-compatible endpoint; reuse ChatOpenAI so
+        # tool-calling works with capable local models. No API key required.
+        from langchain_openai import ChatOpenAI
+
+        base_url = (cfg.base_url or "http://localhost:11434").rstrip("/")
+        if not base_url.endswith("/v1"):
+            base_url += "/v1"
+        return ChatOpenAI(
+            model=cfg.model,
+            api_key=cfg.api_key or "ollama",
+            base_url=base_url,
+            temperature=cfg.temperature,
+        )
+
+    if cfg.provider is LLMProvider.lyzr:
+        if not cfg.api_key or not cfg.lyzr_agent_id:
+            raise ValueError(
+                "llm.provider=lyzr requires api_key and lyzr_agent_id"
+            )
+        from app.agent.lyzr import LyzrChatModel
+
+        kwargs: dict = {"api_key": cfg.api_key, "agent_id": cfg.lyzr_agent_id, "user_id": cfg.lyzr_user_id}
+        if cfg.base_url:
+            kwargs["base_url"] = cfg.base_url
+        return LyzrChatModel(**kwargs)
+
     raise ValueError(f"unsupported llm provider: {cfg.provider}")  # pragma: no cover
 
 

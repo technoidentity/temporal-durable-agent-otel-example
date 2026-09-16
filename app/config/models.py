@@ -36,6 +36,13 @@ class OtelProtocol(str, Enum):
 
 class LLMProvider(str, Enum):
     openai = "openai"
+    # ``lyzr`` routes reasoning through the Lyzr Agent API (the model router):
+    # the underlying model is configured on the Lyzr agent, so the Lyzr key
+    # covers LLM access. Returns text (no OpenAI-style tool_calls).
+    lyzr = "lyzr"
+    # ``ollama`` is a local, real LLM for offline development. Tool-calling
+    # capable models (e.g. llama3.1, qwen2.5) support the tool flow.
+    ollama = "ollama"
     # ``fake`` is a deterministic, offline tool-calling model. It lets the full
     # workflow -> agent -> tool -> agent path run end to end without an API key.
     fake = "fake"
@@ -134,9 +141,14 @@ class LLMConfig(BaseModel):
     provider: LLMProvider = LLMProvider.openai
     model: str = "gpt-4o-mini"
     api_key: str = ""
-    # Optional custom endpoint (OpenAI-compatible gateways, Azure, local, ...).
+    # Optional custom endpoint (OpenAI-compatible gateways, Azure, local,
+    # Ollama at http://localhost:11434, ...).
     base_url: str = ""
     temperature: float = 0.0
+    # Lyzr routing: the agent to invoke and a stable caller id. base_url/api_key
+    # above are reused for the Lyzr endpoint and x-api-key.
+    lyzr_agent_id: str = ""
+    lyzr_user_id: str = "devex-demo"
 
     @model_validator(mode="after")
     def _validate_provider(self) -> "LLMConfig":

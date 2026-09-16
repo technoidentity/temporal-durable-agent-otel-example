@@ -39,11 +39,14 @@ langgraph:
   graph_name: hello-agent
 
 llm:
-  provider: openai             # openai | fake
+  provider: openai             # openai | lyzr | ollama | fake
   model: gpt-4o-mini
-  api_key: ${OPENAI_API_KEY}
-  base_url: ""
+  api_key: ${OPENAI_API_KEY}   # for lyzr: the Lyzr x-api-key
+  base_url: ""                 # ollama: http://localhost:11434 ; lyzr: override endpoint
   temperature: 0.0
+  # Lyzr model router (provider: lyzr). The model is chosen on the Lyzr agent.
+  lyzr_agent_id: ${LYZR_AGENT_ID}
+  lyzr_user_id: devex-demo
 
 observability:
   enabled: true

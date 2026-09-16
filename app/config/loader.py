@@ -49,6 +49,9 @@ _ENV_OVERRIDES: dict[str, str] = {
     "LLM_BASE_URL": "llm.base_url",
     "OPENAI_API_KEY": "llm.api_key",
     "OPENAI_BASE_URL": "llm.base_url",
+    "LYZR_API_KEY": "llm.api_key",
+    "LYZR_AGENT_ID": "llm.lyzr_agent_id",
+    "LYZR_BASE_URL": "llm.base_url",
     # observability
     "OBSERVABILITY_ENABLED": "observability.enabled",
     "OTEL_SERVICE_NAME": "observability.service_name",
