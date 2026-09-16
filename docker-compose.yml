@@ -14,6 +14,27 @@
 
 name: temporal-langgraph-agent
 
+# Shared base for the application services (worker, agents, UI). One image built
+# from the repo, run with different commands. Only active under `--profile app`.
+x-app-base: &app-base
+  profiles: ["app"]
+  build:
+    context: .
+    dockerfile: docker/worker.Dockerfile
+  environment:
+    APP_CONFIG_FILE: config/config.docker.yaml
+    LLM_PROVIDER: ${LLM_PROVIDER:-lyzr}
+    LYZR_API_KEY: ${LYZR_API_KEY:-}
+    LYZR_AGENT_ID: ${LYZR_AGENT_ID:-}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ARIZE_ENABLED: ${ARIZE_ENABLED:-false}
+    ARIZE_TRANSPORT: ${ARIZE_TRANSPORT:-app}
+    ARIZE_OTLP_ENDPOINT: ${ARIZE_OTLP_ENDPOINT:-https://otlp.arize.com/v1}
+    ARIZE_SPACE_ID: ${ARIZE_SPACE_ID:-}
+    ARIZE_API_KEY: ${ARIZE_API_KEY:-}
+  volumes:
+    - ./config:/app/config:ro
+
 services:
   postgresql:
     image: postgres:16-alpine
@@ -112,27 +133,54 @@ services:
     ports:
       - "3000:3000"
 
-  # Optional: run the worker inside the stack with `docker compose --profile app up`.
+  # ----- Application services (profile: app) --------------------------------
+  # Start the whole platform with:  docker compose --profile app up --build
+  # One image, different commands. Secrets come from repo .env (compose reads it).
+  servicenow-agent:
+    <<: *app-base
+    command: ["python", "-m", "app.entrypoints.servicenow_agent", "--port", "8801"]
+    ports:
+      - "8801:8801"
+
+  peer-agent:
+    <<: *app-base
+    command: ["python", "-m", "app.entrypoints.a2a_server", "--name", "peer", "--port", "8802", "--handler", "echo"]
+    ports:
+      - "8802:8802"
+
   worker:
-    profiles: ["app"]
-    build:
-      context: .
-      dockerfile: docker/worker.Dockerfile
+    <<: *app-base
+    command: ["python", "-m", "app.entrypoints.worker"]
     depends_on:
       temporal:
         condition: service_healthy
       otel-collector:
         condition: service_started
-    environment:
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_NAMESPACE: default
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
-      INFRA_AUTO_START: "false"
-      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      servicenow-agent:
+        condition: service_started
+
+  ui:
+    <<: *app-base
+    command: ["python", "-m", "app.entrypoints.ui", "--port", "8000"]
+    depends_on:
+      temporal:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  # Optional local LLM (profile: ollama). Then set LLM_PROVIDER=ollama and
+  # LLM_BASE_URL=http://ollama:11434 for the app services.
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-data:/root/.ollama
+    ports:
+      - "11434:11434"
 
 volumes:
   postgresql-data:
   prometheus-data:
   grafana-data:
   phoenix-data:
+  ollama-data:
