@@ -1,14 +1,37 @@
-# PepsiCo Agent Ops — Durable Multi‑Agent Platform (Reference)
+<div align="center">
 
-A runnable reference implementation of an **enterprise agent platform**: multiple
-AI agents that collaborate on a business task, run **durably** on Temporal,
-pause for **human approval** when needed, call **other agents** (including a
-**third‑party ServiceNow agent**), and are **fully observable**. Everything is
-**config‑driven**, and a compact **demo UI** lets you drive and stress‑test it.
+# 🥤 PepsiCo Agent Ops
 
-It follows one principle throughout:
+**Durable, observable, multi‑agent orchestration — a config‑driven reference platform.**
 
-> **LangGraph owns agent reasoning. Temporal owns durable execution. Lyzr is the model router.**
+[![Python 3.12+](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Temporal](https://img.shields.io/badge/Temporal-durable%20execution-000000)](https://temporal.io/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-agent%20reasoning-1C7D73)](https://langchain-ai.github.io/langgraph/)
+[![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-traces%20%26%20metrics-425CC7?logo=opentelemetry&logoColor=white)](https://opentelemetry.io/)
+[![Arize](https://img.shields.io/badge/Arize-LLM%20observability-6D28D9)](https://arize.com/)
+![Tests](https://img.shields.io/badge/tests-77%20passing-2EA043)
+
+`Multi‑agent` · `Human‑in‑the‑loop` · `Agent‑to‑agent` · `Third‑party (ServiceNow)` · `Chaos testing` · `Config‑driven`
+
+</div>
+
+> **LangGraph owns agent reasoning · Temporal owns durable execution · Lyzr routes the models.**
+
+A runnable reference implementation of an **enterprise agent platform**: multiple AI agents that
+collaborate on a business task, run **durably** on Temporal, pause for **human approval** when
+needed, call **other agents** (including a **third‑party ServiceNow agent**), and are **fully
+observable**. Everything is **config‑driven**, and a compact **demo UI** lets you drive and
+stress‑test it.
+
+## Contents
+
+|  |  |  |
+|---|---|---|
+| [1. What it does](#1-what-it-does-the-business-story) | [2. Quick start](#2-see-it-in-5-minutes) | [3. Architecture](#3-architecture) |
+| [4. Capabilities](#4-capabilities-whats-built) | [5. Demo UI](#5-the-demo-ui-for-business-users) | [6. CLI usage](#6-running-from-the-cli-for-developers) |
+| [7. Configuration](#7-configuration) | [8. Temporal Cloud](#8-temporal-cloud-config-only) | [9. Observability](#9-observability) |
+| [10. Project layout](#10-project-layout) | [11. Testing](#11-testing) | [12. Glossary](#12-glossary-for-non-specialists) |
+| [13. SDK notes](#13-notes-on-the-current-temporal-sdk-vs-older-examples) | [14. Troubleshooting](#14-troubleshooting) | [15. Agent Studio](#15-agent-studio-guided-multi-agent-demo) |
 
 ---
 
@@ -355,7 +378,7 @@ server and the live Lyzr agents.
 
 ---
 
-## 12. Glossary (for non‑specialists)
+## 12. Glossary (for non-specialists)
 
 - **Temporal** — durable workflow engine: your process survives crashes,
   retries failed steps, and can wait days for a human without losing state.
