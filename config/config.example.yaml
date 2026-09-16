@@ -36,7 +36,15 @@ temporal:
       maximum_attempts: 3
 
 langgraph:
+  enabled: true                # single-agent hello graph (tool-calling demo)
   graph_name: hello-agent
+
+multi_agent:
+  enabled: false               # PepsiCo order pipeline (multi-agent)
+  graph_name: pepsico-order
+  pipeline: [intake, inventory, pricing, fulfillment, account, supervisor]
+  lyzr_agents_file: config/lyzr_agents.yaml
+  name_prefix: "pepsico-"
 
 llm:
   provider: openai             # openai | lyzr | ollama | fake

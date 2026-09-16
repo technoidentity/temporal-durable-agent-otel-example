@@ -131,7 +131,37 @@ class TemporalConfig(BaseModel):
 # langgraph
 # --------------------------------------------------------------------------- #
 class LangGraphConfig(BaseModel):
+    # The single-agent hello graph (tool-calling demo). Disable it to run a
+    # pure multi-agent worker (e.g. with a non-tool-calling provider like Lyzr).
+    enabled: bool = True
     graph_name: str = "hello-agent"
+
+
+# --------------------------------------------------------------------------- #
+# multi-agent
+# --------------------------------------------------------------------------- #
+class MultiAgentConfig(BaseModel):
+    """The PepsiCo multi-agent order pipeline.
+
+    ``pipeline`` selects and orders roles from the known roster. Each role maps
+    to a Lyzr agent id via ``lyzr_agents_file`` (key = ``name_prefix`` + role)
+    when the LLM provider is ``lyzr``; other providers reuse the global llm.
+    """
+
+    enabled: bool = False
+    graph_name: str = "pepsico-order"
+    pipeline: list[str] = Field(
+        default_factory=lambda: [
+            "intake",
+            "inventory",
+            "pricing",
+            "fulfillment",
+            "account",
+            "supervisor",
+        ]
+    )
+    lyzr_agents_file: str = "config/lyzr_agents.yaml"
+    name_prefix: str = "pepsico-"
 
 
 # --------------------------------------------------------------------------- #
@@ -244,6 +274,7 @@ class AppSettings(BaseModel):
     app: AppConfig = Field(default_factory=AppConfig)
     temporal: TemporalConfig = Field(default_factory=TemporalConfig)
     langgraph: LangGraphConfig = Field(default_factory=LangGraphConfig)
+    multi_agent: MultiAgentConfig = Field(default_factory=MultiAgentConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     infrastructure: InfrastructureConfig = Field(default_factory=InfrastructureConfig)

@@ -24,8 +24,11 @@ infra-status: ## Show health of each infrastructure service
 worker: ## Run the Temporal worker
 	$(PYTHON) -m app.entrypoints.worker
 
-run: ## Execute a workflow: make run MESSAGE="What time is it?"
+run: ## Execute the hello workflow: make run MESSAGE="What time is it?"
 	$(PYTHON) -m app.entrypoints.workflow --message "$(MESSAGE)"
+
+order: ## Run the multi-agent order pipeline: make order REQUEST="500 cases Pepsi, 20% off"
+	$(PYTHON) -m app.entrypoints.order --request "$(REQUEST)"
 
 logs: ## Tail infrastructure logs
 	docker compose logs -f

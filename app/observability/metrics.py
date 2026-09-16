@@ -43,9 +43,15 @@ class AgentMetrics:
 
     # --- LLM ---------------------------------------------------------------- #
     @contextmanager
-    def llm_call(self, model: str) -> Iterator[dict]:
-        """Time an LLM call and record calls/duration with a status label."""
+    def llm_call(self, model: str, agent: str = "") -> Iterator[dict]:
+        """Time an LLM call and record calls/duration with a status label.
+
+        ``agent`` is an optional low-cardinality role label (e.g. "inventory")
+        so multi-agent pipelines can be broken down per agent.
+        """
         labels = {"model": model, "status": "ok"}
+        if agent:
+            labels["agent"] = agent
         start = perf_counter()
         try:
             yield labels

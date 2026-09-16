@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any, Sequence
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, ToolMessage, convert_to_messages
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage, convert_to_messages
 from langchain_core.outputs import ChatGeneration, ChatResult
 
 from app.agent.tools import ALL_TOOLS
@@ -60,7 +60,12 @@ class FakeToolCallingModel(BaseChatModel):
                 ],
             )
         else:
-            message = AIMessage(content="No tools are available to answer that.")
+            # No tools bound (e.g. multi-agent pipeline nodes): echo the input so
+            # offline runs and tests produce deterministic, distinguishable output.
+            last_human = next(
+                (m.content for m in reversed(messages) if isinstance(m, HumanMessage)), ""
+            )
+            message = AIMessage(content=f"(fake) {str(last_human)[:160]}")
         return ChatResult(generations=[ChatGeneration(message=message)])
 
 

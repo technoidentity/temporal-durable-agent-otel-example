@@ -16,6 +16,7 @@ from temporalio.contrib.langgraph import LangGraphPlugin
 from temporalio.worker import Worker
 
 from app.agent.graph import build_graph
+from app.agent.multi import build_order_graph
 from app.config import load_settings
 from app.config.models import AppSettings
 from app.infrastructure.docker import ensure_infrastructure
@@ -28,6 +29,7 @@ from app.temporal.client import create_temporal_client
 from app.temporal.retry import build_activity_options
 from app.temporal.runtime import create_runtime
 from app.workflows.agent_workflow import AgentWorkflow
+from app.workflows.order_workflow import OrderWorkflow
 
 
 async def run_worker(settings: AppSettings) -> None:
@@ -41,9 +43,20 @@ async def run_worker(settings: AppSettings) -> None:
     runtime = create_runtime(settings)
     interceptors = build_temporal_interceptors(settings)
 
-    graph = build_graph(settings)
+    graphs: dict = {}
+    workflows: list = []
+    if settings.langgraph.enabled:
+        graphs[settings.langgraph.graph_name] = build_graph(settings)
+        workflows.append(AgentWorkflow)
+    if settings.multi_agent.enabled:
+        graphs[settings.multi_agent.graph_name] = build_order_graph(settings)
+        workflows.append(OrderWorkflow)
+        log.info("multi_agent.enabled", graph=settings.multi_agent.graph_name)
+    if not graphs:
+        raise ValueError("no graphs enabled: enable langgraph and/or multi_agent")
+
     plugin = LangGraphPlugin(
-        graphs={settings.langgraph.graph_name: graph},
+        graphs=graphs,
         default_activity_options=build_activity_options(settings.temporal.activity),
     )
 
@@ -59,7 +72,7 @@ async def run_worker(settings: AppSettings) -> None:
     worker = Worker(
         client,
         task_queue=settings.temporal.task_queue,
-        workflows=[AgentWorkflow],
+        workflows=workflows,
         plugins=[plugin],
     )
 
