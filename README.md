@@ -23,6 +23,15 @@ needed, call **other agents** (including a **third‑party ServiceNow agent**), 
 observable**. Everything is **config‑driven**, and a compact **demo UI** lets you drive and
 stress‑test it.
 
+## Watch the demo
+
+[![Watch the PepsiCo Agent Studio demo on Loom](https://cdn.loom.com/sessions/thumbnails/a2a5cbc0d8044635a1484fe453ba4182-f2519205da6b703c.gif)](https://www.loom.com/share/a2a5cbc0d8044635a1484fe453ba4182)
+
+**[▶ Watch the Agent Studio walkthrough (2 min 6 sec)](https://www.loom.com/share/a2a5cbc0d8044635a1484fe453ba4182)**
+
+Click the preview to play the video on Loom. GitHub displays the preview here;
+the Loom video player opens on Loom.
+
 ## Contents
 
 |  |  |  |
