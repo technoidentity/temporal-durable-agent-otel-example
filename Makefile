@@ -32,3 +32,6 @@ logs: ## Tail infrastructure logs
 
 test: ## Run unit tests
 	$(PYTHON) -m pytest -q
+
+services: ## Interactive start/stop/status for infra + worker
+	./scripts/services.sh

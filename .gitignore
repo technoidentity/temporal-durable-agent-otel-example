@@ -22,3 +22,6 @@ venv/
 
 # Data volumes (should live in Docker named volumes, never the repo)
 /data/
+
+# Runtime (pidfiles, worker logs)
+.run/

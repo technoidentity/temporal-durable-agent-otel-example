@@ -204,6 +204,24 @@ simply show no data.
   endpoint on `:8889`; Prometheus scrapes it (OTLP -> Collector -> Prometheus,
   not a direct scrape of the worker); Grafana reads Prometheus.
 
+## Interactive control script
+
+`scripts/services.sh` is an interactive menu (and CLI) to start/stop/inspect
+everything. Reachability is probed by port/HTTP, so it detects each dependency
+whether it runs in Docker or as a native service, and reports the Docker
+container when present. It reads endpoint overrides from `.env`.
+
+```bash
+make services                    # interactive menu
+./scripts/services.sh status     # infra + worker health
+./scripts/services.sh start      # infra (if needed) + worker
+./scripts/services.sh stop       # worker only (infra left running)
+./scripts/services.sh run "What time is it?"
+./scripts/services.sh logs       # tail the worker log
+```
+
+The worker runs as a background process tracked by a pidfile under `.run/`.
+
 ## Running infrastructure independently
 
 The worker never stops infrastructure. Manage it on its own:
