@@ -60,6 +60,18 @@ a2a:                           # agent-to-agent connectivity (remote A2A agents)
     # peer: http://localhost:8802
   call_timeout_seconds: 30
 
+third_party:
+  servicenow:
+    enabled: false
+    mode: simulator            # simulator | real
+    base_url: ""               # real PDI, e.g. https://devXXXXX.service-now.com
+    username: ${SERVICENOW_USER}
+    password: ${SERVICENOW_PASSWORD}
+    table: incident
+    a2a_url: http://localhost:8801
+    open_incident_on_risk: true
+    risk_keywords: [risk, shortfall, delay, escalate, case, unable, insufficient, out of stock]
+
 llm:
   provider: openai             # openai | lyzr | ollama | fake
   model: gpt-4o-mini

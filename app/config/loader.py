@@ -59,6 +59,12 @@ _ENV_OVERRIDES: dict[str, str] = {
     "OTEL_EXPORTER_OTLP_PROTOCOL": "observability.otel.protocol",
     "TEMPORAL_CLOUD_METRICS_ENABLED": "observability.temporal_cloud_metrics.enabled",
     "TEMPORAL_METRICS_API_KEY": "observability.temporal_cloud_metrics.api_key",
+    # third-party (ServiceNow)
+    "SERVICENOW_MODE": "third_party.servicenow.mode",
+    "SERVICENOW_BASE_URL": "third_party.servicenow.base_url",
+    "SERVICENOW_USER": "third_party.servicenow.username",
+    "SERVICENOW_PASSWORD": "third_party.servicenow.password",
+    "SERVICENOW_A2A_URL": "third_party.servicenow.a2a_url",
     # infrastructure
     "INFRA_AUTO_START": "infrastructure.auto_start",
     "INFRA_COMPOSE_FILE": "infrastructure.docker_compose_file",

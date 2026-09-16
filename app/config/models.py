@@ -205,6 +205,41 @@ class A2AConfig(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# third-party systems
+# --------------------------------------------------------------------------- #
+class ServiceNowConfig(BaseModel):
+    """ServiceNow integration. ``simulator`` uses a local seeded instance;
+    ``real`` points at a ServiceNow PDI (credentials from env). Swapping is a
+    config change only."""
+
+    enabled: bool = False
+    mode: str = "simulator"  # simulator | real
+    base_url: str = ""  # real instance, e.g. https://devXXXXX.service-now.com
+    username: str = ""
+    password: str = ""
+    table: str = "incident"
+    # Where the ServiceNow A2A agent listens (used by the order flow).
+    a2a_url: str = "http://localhost:8801"
+    open_incident_on_risk: bool = True
+    risk_keywords: list[str] = Field(
+        default_factory=lambda: [
+            "risk",
+            "shortfall",
+            "delay",
+            "escalate",
+            "case",
+            "unable",
+            "insufficient",
+            "out of stock",
+        ]
+    )
+
+
+class ThirdPartyConfig(BaseModel):
+    servicenow: ServiceNowConfig = Field(default_factory=ServiceNowConfig)
+
+
+# --------------------------------------------------------------------------- #
 # llm
 # --------------------------------------------------------------------------- #
 class LLMConfig(BaseModel):
@@ -317,6 +352,7 @@ class AppSettings(BaseModel):
     multi_agent: MultiAgentConfig = Field(default_factory=MultiAgentConfig)
     hitl: HITLConfig = Field(default_factory=HITLConfig)
     a2a: A2AConfig = Field(default_factory=A2AConfig)
+    third_party: ThirdPartyConfig = Field(default_factory=ThirdPartyConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     infrastructure: InfrastructureConfig = Field(default_factory=InfrastructureConfig)

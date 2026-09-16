@@ -28,6 +28,7 @@ async def execute(settings: AppSettings, request: str, workflow_id: str | None, 
     workflow_id = workflow_id or f"{graph_name}-{uuid.uuid4().hex[:12]}"
     hitl = settings.hitl
 
+    sn = settings.third_party.servicenow
     inp = OrderWorkflowInput(
         request=request,
         graph_name=graph_name,
@@ -36,6 +37,9 @@ async def execute(settings: AppSettings, request: str, workflow_id: str | None, 
         discount_threshold=overrides.get("threshold", hitl.discount_threshold),
         approval_timeout_seconds=overrides.get("timeout", hitl.approval_timeout_seconds),
         on_timeout=overrides.get("on_timeout", hitl.on_timeout.value),
+        servicenow_a2a_url=sn.a2a_url if sn.enabled else "",
+        open_incident_on_risk=sn.enabled and sn.open_incident_on_risk,
+        risk_keywords=list(sn.risk_keywords),
     )
 
     telemetry = init_telemetry(settings)
@@ -88,6 +92,8 @@ async def execute(settings: AppSettings, request: str, workflow_id: str | None, 
         if result.get(stage):
             print(f"\n=== {stage} ===\n{result[stage]}")
     print(f"\n=== approval ===\n{ap}")
+    if result.get("incident"):
+        print(f"\n=== incident ===\n{result['incident']}")
     return result
 
 
