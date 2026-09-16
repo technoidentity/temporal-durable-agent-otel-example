@@ -240,6 +240,14 @@ class ThirdPartyConfig(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# demo UI
+# --------------------------------------------------------------------------- #
+class UIConfig(BaseModel):
+    host: str = "0.0.0.0"
+    port: int = 8000
+
+
+# --------------------------------------------------------------------------- #
 # chaos / fault injection
 # --------------------------------------------------------------------------- #
 class ChaosConfig(BaseModel):
@@ -398,6 +406,7 @@ class AppSettings(BaseModel):
     a2a: A2AConfig = Field(default_factory=A2AConfig)
     third_party: ThirdPartyConfig = Field(default_factory=ThirdPartyConfig)
     chaos: ChaosConfig = Field(default_factory=ChaosConfig)
+    ui: UIConfig = Field(default_factory=UIConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     infrastructure: InfrastructureConfig = Field(default_factory=InfrastructureConfig)

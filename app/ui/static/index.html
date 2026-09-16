@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PepsiCo Agent Ops</title>
+<style>
+  :root{
+    --pep-blue:#004b93; --pep-blue-2:#0a6cc9; --pep-red:#eb1933;
+    --ink:#0e1726; --muted:#5b6b82; --line:#e5ebf2; --bg:#f4f7fb; --card:#fff;
+    --ok:#127a3e; --warn:#b7791f; --bad:#c02a37;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.45 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+  header{background:linear-gradient(90deg,var(--pep-blue),var(--pep-blue-2));color:#fff;padding:12px 20px;display:flex;align-items:center;gap:14px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;letter-spacing:.2px}
+  .globe{width:24px;height:24px;border-radius:50%;background:conic-gradient(var(--pep-red) 0 50%,#fff 50% 100%);border:2px solid #fff;box-shadow:0 0 0 1px var(--pep-blue)}
+  header .spacer{flex:1}
+  header a,header .badge{color:#eaf2fb;text-decoration:none;font-size:12px;margin-left:12px;opacity:.95}
+  header a:hover{text-decoration:underline}
+  .badge{background:rgba(255,255,255,.15);padding:2px 8px;border-radius:999px}
+  main{max-width:1180px;margin:18px auto;padding:0 16px;display:grid;grid-template-columns:400px 1fr;gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 1px 2px rgba(16,32,60,.04)}
+  h2{margin:0 0 12px;font-size:15px}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px;font-weight:600}
+  textarea,input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fbfdff}
+  textarea{resize:vertical;min-height:64px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 10px;font-size:12px;cursor:pointer}
+  .chip:hover{border-color:var(--pep-blue-2);color:var(--pep-blue)}
+  fieldset{border:1px dashed var(--line);border-radius:10px;margin:12px 0 0;padding:10px 12px}
+  legend{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;padding:0 6px}
+  .inline{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .inline input[type=checkbox]{width:auto}
+  button.run{margin-top:14px;width:100%;background:var(--pep-red);color:#fff;border:0;border-radius:9px;padding:11px;font-weight:700;font-size:14px;cursor:pointer}
+  button.run:hover{filter:brightness(.96)}
+  .runs{display:flex;flex-direction:column;gap:10px}
+  .run{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fff}
+  .run .top{display:flex;align-items:center;gap:8px}
+  .run .id{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--muted)}
+  .pill{font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.4px}
+  .pill.RUNNING{background:#e7f0fb;color:var(--pep-blue)}
+  .pill.COMPLETED{background:#e6f5ec;color:var(--ok)}
+  .pill.FAILED,.pill.TERMINATED,.pill.TIMED_OUT{background:#fdeaec;color:var(--bad)}
+  .pill.PENDING{background:#fdf3e2;color:var(--warn)}
+  .req{margin:8px 0;color:var(--ink)}
+  .stages{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+  .stage{border-left:3px solid var(--pep-blue-2);background:#f8fbff;padding:6px 10px;border-radius:0 8px 8px 0}
+  .stage b{display:block;font-size:11px;color:var(--pep-blue);text-transform:uppercase;letter-spacing:.4px}
+  .stage span{white-space:pre-wrap;font-size:13px;color:#243449}
+  .approval{margin-top:8px;padding:8px 10px;border-radius:8px;background:#fdf3e2;border:1px solid #f3dcae}
+  .approval.ok{background:#e6f5ec;border-color:#bfe6cd}
+  .incident{margin-top:8px;padding:8px 10px;border-radius:8px;background:#eef2f9;border:1px solid var(--line);font-size:13px}
+  .approve-row{display:flex;gap:8px;margin-top:8px}
+  .btn{border:0;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;font-size:13px}
+  .btn.ok{background:var(--ok);color:#fff}
+  .btn.no{background:#fff;color:var(--bad);border:1px solid #f0c4c9}
+  .empty{color:var(--muted);text-align:center;padding:24px}
+  .hint{font-size:11px;color:var(--muted);margin-top:4px}
+</style>
+</head>
+<body>
+<header>
+  <span class="globe"></span>
+  <span class="brand">PepsiCo Agent Ops <span class="badge" id="env">·</span> <span class="badge" id="provider">·</span></span>
+  <span class="spacer"></span>
+  <a id="lnk-temporal" target="_blank">Temporal</a>
+  <a id="lnk-grafana" target="_blank">Grafana</a>
+  <a id="lnk-prom" target="_blank">Prometheus</a>
+  <a id="lnk-phoenix" target="_blank">Phoenix</a>
+</header>
+
+<main>
+  <section class="card">
+    <h2>New order</h2>
+    <label>Distributor request</label>
+    <textarea id="request" placeholder="e.g. Star Distributors: 500 cases of Pepsi 330ml at 20% discount"></textarea>
+    <div class="presets" id="presets"></div>
+
+    <fieldset>
+      <legend>Approval (HITL)</legend>
+      <div class="row">
+        <div><label>Discount threshold %</label><input id="threshold" type="number" step="1" /></div>
+        <div><label>Mode</label><select id="hitl_mode"><option value="inline">inline</option><option value="child">child</option></select></div>
+      </div>
+      <div class="inline"><input type="checkbox" id="no_hitl" /><label style="margin:0">Disable approval gate</label></div>
+      <div class="inline"><input type="checkbox" id="force_hitl" /><label style="margin:0">Force approval (chaos)</label></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Chaos / fault injection</legend>
+      <div class="row3">
+        <div><label>Target agent</label><select id="chaos_target"></select></div>
+        <div><label>Fault</label><select id="chaos_mode">
+          <option value="none">none</option>
+          <option value="transient_error">transient_error</option>
+          <option value="permanent_error">permanent_error</option>
+          <option value="latency">latency</option>
+        </select></div>
+        <div><label>Attempts</label><input id="chaos_attempts" type="number" value="1" /></div>
+      </div>
+      <label>Latency seconds (latency mode)</label><input id="chaos_latency" type="number" step="0.5" value="0" />
+      <div class="hint">transient=fail then recover · permanent=fail all attempts · latency>timeout=real timeout+retry</div>
+    </fieldset>
+
+    <div class="hint" id="sn-hint"></div>
+    <button class="run" id="run">Run order</button>
+  </section>
+
+  <section class="card">
+    <h2>Runs</h2>
+    <div class="runs" id="runs"><div class="empty">No runs yet — start one on the left.</div></div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+let META = null;
+const seen = new Map();
+
+async function j(url, opts){ const r = await fetch(url, opts); return r.json(); }
+
+async function loadMeta(){
+  META = await j('/api/meta');
+  $('#env').textContent = META.environment;
+  $('#provider').textContent = 'LLM: ' + META.provider;
+  $('#threshold').value = META.hitl.threshold;
+  $('#hitl_mode').value = META.hitl.mode;
+  const tgt = $('#chaos_target');
+  tgt.innerHTML = '<option value="">(none)</option>' + META.agents.map(a=>`<option value="${a}">${a}</option>`).join('');
+  const L = META.links;
+  $('#lnk-temporal').href=L.temporal_ui; $('#lnk-grafana').href=L.grafana;
+  $('#lnk-prom').href=L.prometheus; $('#lnk-phoenix').href=L.phoenix;
+  $('#sn-hint').textContent = 'ServiceNow: ' + (META.servicenow_enabled ? 'enabled — incidents open on fulfillment risk' : 'disabled');
+  const presets = [
+    'Star Distributors: 500 cases of Pepsi 330ml at 20% discount',
+    'Metro Foods: 200 cases of Mountain Dew 500ml at 10% discount',
+    'URGENT rush: 8000 cases in 24h, stock may be insufficient, 10% discount'
+  ];
+  $('#presets').innerHTML = presets.map((p,i)=>`<span class="chip" data-p="${i}">${p.slice(0,34)}…</span>`).join('');
+  $('#presets').querySelectorAll('.chip').forEach((c,i)=>c.onclick=()=>$('#request').value=presets[i]);
+}
+
+async function startOrder(){
+  const request = $('#request').value.trim();
+  if(!request){ $('#request').focus(); return; }
+  const chaos = {
+    target: $('#chaos_target').value,
+    mode: $('#chaos_mode').value,
+    attempts: parseInt($('#chaos_attempts').value||'1'),
+    latency_seconds: parseFloat($('#chaos_latency').value||'0'),
+    force_hitl: $('#force_hitl').checked
+  };
+  const body = {
+    request,
+    threshold: parseFloat($('#threshold').value),
+    hitl_mode: $('#hitl_mode').value,
+    no_hitl: $('#no_hitl').checked,
+    chaos
+  };
+  $('#run').disabled = true; $('#run').textContent = 'Starting…';
+  try{
+    const res = await j('/api/orders', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    seen.set(res.workflow_id, {id:res.workflow_id, request});
+    render();
+  } finally { $('#run').disabled=false; $('#run').textContent='Run order'; }
+}
+
+function stageHTML(result){
+  if(!result) return '';
+  const order = ['intake','inventory','pricing','fulfillment','account','outcome'];
+  let h = '<div class="stages">';
+  for(const k of order){ if(result[k]) h += `<div class="stage"><b>${k}</b><span>${escapeHtml(result[k])}</span></div>`; }
+  h += '</div>';
+  const ap = result.approval;
+  if(ap){
+    const ok = ap.approved;
+    h += `<div class="approval ${ok?'ok':''}">Approval: <b>${ap.approved?'approved':'rejected'}</b> · ${ap.via}${ap.required?` · discount ${ap.discount}% vs ${ap.threshold}%`:' (auto)'}</div>`;
+  }
+  if(result.incident){ h += `<div class="incident">🎫 ${escapeHtml(result.incident)}</div>`; }
+  return h;
+}
+
+function escapeHtml(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function render(){
+  const el = $('#runs');
+  if(seen.size===0){ el.innerHTML='<div class="empty">No runs yet — start one on the left.</div>'; return; }
+  el.innerHTML = '';
+  for(const r of seen.values()){
+    const st = r.status || 'RUNNING';
+    const pill = r.pending && r.pending.pending ? 'PENDING' : st;
+    const div = document.createElement('div');
+    div.className='run';
+    let inner = `<div class="top"><span class="pill ${pill}">${pill}</span><span class="id">${r.id}</span></div>
+      <div class="req">${escapeHtml(r.request||'')}</div>`;
+    if(r.pending && r.pending.pending){
+      inner += `<div class="approval">${escapeHtml(r.pending.details||'Approval required')}</div>
+        <div class="approve-row"><button class="btn ok" data-ok="${r.id}">Approve</button>
+        <button class="btn no" data-no="${r.id}">Reject</button></div>`;
+    }
+    inner += stageHTML(r.result);
+    div.innerHTML = inner;
+    el.appendChild(div);
+  }
+  el.querySelectorAll('[data-ok]').forEach(b=>b.onclick=()=>decide(b.getAttribute('data-ok'),true));
+  el.querySelectorAll('[data-no]').forEach(b=>b.onclick=()=>decide(b.getAttribute('data-no'),false));
+}
+
+async function decide(id, approved){
+  await j(`/api/orders/${id}/decision`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({approved,approver:'ui',note:approved?'approved via UI':'rejected via UI'})});
+  poll();
+}
+
+async function poll(){
+  for(const id of seen.keys()){
+    try{
+      const s = await j('/api/orders/'+id);
+      const r = seen.get(id); r.status=s.status; r.pending=s.pending; r.result=s.result;
+    }catch(e){}
+  }
+  render();
+}
+
+$('#run').onclick = startOrder;
+loadMeta().then(()=>{ render(); setInterval(poll, 2000); });
+</script>
+</body>
+</html>

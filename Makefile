@@ -38,3 +38,6 @@ test: ## Run unit tests
 
 services: ## Interactive start/stop/status for infra + worker
 	./scripts/services.sh
+
+ui: ## Run the demo UI control plane (http://localhost:8000)
+	$(PYTHON) -m app.entrypoints.ui
