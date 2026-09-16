@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Environment / secrets
+.env
+*.local
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Data volumes (should live in Docker named volumes, never the repo)
+/data/
+
+# Runtime (pidfiles, worker logs)
+.run/
+
+# Local browser evidence and Impeccable working files
+.playwright-mcp/
+.impeccable/

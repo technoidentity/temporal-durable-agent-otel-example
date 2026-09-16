@@ -1,0 +1,87 @@
+# Application configuration.
+#
+# Precedence:  environment variables  >  this file  >  model defaults.
+# Never put real secrets here. Use ${VAR} to pull secrets from the environment,
+# or set the documented override variables (see .env.example / README).
+
+app:
+  name: temporal-langgraph-agent
+  environment: local
+
+temporal:
+  mode: self_hosted            # self_hosted | cloud
+
+  self_hosted:
+    address: localhost:7233
+    namespace: default
+
+  cloud:
+    address: ""                # <namespace>.<account>.tmprl.cloud:7233
+    namespace: ""
+    api_key: ${TEMPORAL_CLOUD_API_KEY}
+    tls_enabled: true
+
+  task_queue: langgraph-agent
+
+  workflow:
+    execution_timeout_seconds: 300
+
+  activity:
+    start_to_close_timeout_seconds: 60
+    maximum_attempts: 3
+    retry:
+      initial_interval_seconds: 1
+      backoff_coefficient: 2
+      maximum_interval_seconds: 30
+      maximum_attempts: 3
+
+langgraph:
+  graph_name: hello-agent
+
+llm:
+  provider: openai             # openai | fake
+  model: gpt-4o-mini
+  api_key: ${OPENAI_API_KEY}
+  base_url: ""
+  temperature: 0.0
+
+observability:
+  enabled: true
+  service_name: temporal-langgraph-worker
+
+  otel:
+    enabled: true
+    endpoint: http://localhost:4317
+    protocol: grpc             # grpc | http
+
+  metrics:
+    enabled: true
+  traces:
+    enabled: true
+  logs:
+    enabled: true
+
+  temporal_worker_metrics:
+    enabled: true
+
+  temporal_cloud_metrics:
+    enabled: false
+    endpoint: https://metrics.temporal.io/v1/metrics
+    api_key: ${TEMPORAL_METRICS_API_KEY}
+
+  log_prompts: false
+
+infrastructure:
+  auto_start: true
+  docker_compose_file: docker-compose.yml
+  startup_timeout_seconds: 120
+
+  services:
+    temporal: true
+    otel_collector: true
+    prometheus: true
+    grafana: true
+
+  temporal_ui_url: http://localhost:8233
+  prometheus_url: http://localhost:9090
+  grafana_url: http://localhost:3000

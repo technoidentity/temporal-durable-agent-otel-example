@@ -1,0 +1,25 @@
+# Repeatable local UI demo; no external model or ServiceNow credentials needed.
+app:
+  environment: local
+llm:
+  provider: fake
+multi_agent:
+  enabled: true
+hitl:
+  approval_timeout_seconds: 1800
+temporal:
+  workflow:
+    execution_timeout_seconds: 3600
+observability:
+  phoenix:
+    enabled: true
+  instrument_llm: true
+a2a:
+  enabled: true
+third_party:
+  servicenow:
+    enabled: true
+    mode: simulator
+    risk_keywords: [risk, shortfall, insufficient, delay, escalate]
+infrastructure:
+  auto_start: false

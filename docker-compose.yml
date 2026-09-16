@@ -1,0 +1,186 @@
+# Local infrastructure for the reference application.
+#
+#   Temporal gRPC   localhost:7233
+#   Temporal UI     localhost:8233
+#   OTLP gRPC       localhost:4317
+#   OTLP HTTP       localhost:4318
+#   Collector /metrics (Prometheus exposition)  localhost:8889
+#   Prometheus      localhost:9090
+#   Grafana         localhost:3000
+#
+# The Python application reads all of these from config; nothing here is
+# hardcoded on the Python side. The `worker` service is optional and only
+# started with `--profile app`.
+
+name: temporal-langgraph-agent
+
+# Shared base for the application services (worker, agents, UI). One image built
+# from the repo, run with different commands. Only active under `--profile app`.
+x-app-base: &app-base
+  profiles: ["app"]
+  build:
+    context: .
+    dockerfile: docker/worker.Dockerfile
+  environment:
+    APP_CONFIG_FILE: config/config.docker.yaml
+    LLM_PROVIDER: ${LLM_PROVIDER:-lyzr}
+    LYZR_API_KEY: ${LYZR_API_KEY:-}
+    LYZR_AGENT_ID: ${LYZR_AGENT_ID:-}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ARIZE_ENABLED: ${ARIZE_ENABLED:-false}
+    ARIZE_TRANSPORT: ${ARIZE_TRANSPORT:-app}
+    ARIZE_OTLP_ENDPOINT: ${ARIZE_OTLP_ENDPOINT:-https://otlp.arize.com/v1}
+    ARIZE_SPACE_ID: ${ARIZE_SPACE_ID:-}
+    ARIZE_API_KEY: ${ARIZE_API_KEY:-}
+  volumes:
+    - ./config:/app/config:ro
+
+services:
+  postgresql:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  temporal:
+    image: temporalio/auto-setup:1.28.1
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: postgresql
+    ports:
+      - "7233:7233"
+    healthcheck:
+      test: ["CMD", "temporal", "workflow", "list", "--address", "temporal:7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8233:8080"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    command: ["--config=/etc/otel-collector.yaml"]
+    volumes:
+      - ./docker/otel-collector.yaml:/etc/otel-collector.yaml:ro
+    environment:
+      # Only used when the Temporal Cloud scrape is enabled in the collector config.
+      TEMPORAL_METRICS_API_KEY: ${TEMPORAL_METRICS_API_KEY:-}
+      # Used only if otlphttp/arize is added to the traces pipeline (via-collector path).
+      ARIZE_OTLP_ENDPOINT: ${ARIZE_OTLP_ENDPOINT:-https://otlp.arize.com/v1}
+      ARIZE_SPACE_ID: ${ARIZE_SPACE_ID:-}
+      ARIZE_API_KEY: ${ARIZE_API_KEY:-}
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+      - "13133:13133"
+
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    environment:
+      PHOENIX_WORKING_DIR: /data
+    volumes:
+      - phoenix-data:/data
+    ports:
+      - "6006:6006"   # Phoenix UI (also OTLP HTTP)
+      - "4319:4317"   # Phoenix OTLP gRPC (host 4319 avoids the collector's 4317)
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    depends_on:
+      - otel-collector
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+
+  # ----- Application services (profile: app) --------------------------------
+  # Start the whole platform with:  docker compose --profile app up --build
+  # One image, different commands. Secrets come from repo .env (compose reads it).
+  servicenow-agent:
+    <<: *app-base
+    command: ["python", "-m", "app.entrypoints.servicenow_agent", "--port", "8801"]
+    ports:
+      - "8801:8801"
+
+  peer-agent:
+    <<: *app-base
+    command: ["python", "-m", "app.entrypoints.a2a_server", "--name", "peer", "--port", "8802", "--handler", "echo"]
+    ports:
+      - "8802:8802"
+
+  worker:
+    <<: *app-base
+    command: ["python", "-m", "app.entrypoints.worker"]
+    depends_on:
+      temporal:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+      servicenow-agent:
+        condition: service_started
+
+  ui:
+    <<: *app-base
+    command: ["python", "-m", "app.entrypoints.ui", "--port", "8000"]
+    depends_on:
+      temporal:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  # Optional local LLM (profile: ollama). Then set LLM_PROVIDER=ollama and
+  # LLM_BASE_URL=http://ollama:11434 for the app services.
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-data:/root/.ollama
+    ports:
+      - "11434:11434"
+
+volumes:
+  postgresql-data:
+  prometheus-data:
+  grafana-data:
+  phoenix-data:
+  ollama-data:

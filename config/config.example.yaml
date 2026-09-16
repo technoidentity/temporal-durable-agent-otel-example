@@ -1,0 +1,150 @@
+# Application configuration.
+#
+# Precedence:  environment variables  >  this file  >  model defaults.
+# Never put real secrets here. Use ${VAR} to pull secrets from the environment,
+# or set the documented override variables (see .env.example / README).
+
+app:
+  name: temporal-langgraph-agent
+  environment: local
+
+temporal:
+  mode: self_hosted            # self_hosted | cloud
+
+  self_hosted:
+    address: localhost:7233
+    namespace: default
+
+  cloud:
+    address: ""                # <namespace>.<account>.tmprl.cloud:7233
+    namespace: ""
+    api_key: ${TEMPORAL_CLOUD_API_KEY}
+    tls_enabled: true
+
+  task_queue: langgraph-agent
+
+  workflow:
+    execution_timeout_seconds: 300
+
+  activity:
+    start_to_close_timeout_seconds: 60
+    maximum_attempts: 3
+    retry:
+      initial_interval_seconds: 1
+      backoff_coefficient: 2
+      maximum_interval_seconds: 30
+      maximum_attempts: 3
+
+langgraph:
+  enabled: true                # single-agent hello graph (tool-calling demo)
+  graph_name: hello-agent
+
+multi_agent:
+  enabled: false               # PepsiCo order pipeline (multi-agent)
+  graph_name: pepsico-order
+  pipeline: [intake, inventory, pricing, fulfillment, account, supervisor]
+  lyzr_agents_file: config/lyzr_agents.yaml
+  name_prefix: "pepsico-"
+
+hitl:                          # human-in-the-loop approval gate (all overridable per run)
+  enabled: true
+  mode: inline                 # inline | child (dedicated ApprovalWorkflow)
+  discount_threshold: 15.0     # requested discount % above this needs approval
+  approval_timeout_seconds: 86400
+  on_timeout: reject           # reject | approve
+
+a2a:                           # agent-to-agent connectivity (remote A2A agents)
+  enabled: false
+  agents: {}                   # e.g. {servicenow: "http://localhost:8801", peer: "http://localhost:8802"}
+  call_timeout_seconds: 30
+
+third_party:
+  servicenow:
+    enabled: false
+    mode: simulator            # simulator | real
+    base_url: ""               # real PDI, e.g. https://devXXXXX.service-now.com
+    username: ${SERVICENOW_USER}
+    password: ${SERVICENOW_PASSWORD}
+    table: incident
+    a2a_url: http://localhost:8801
+    open_incident_on_risk: true
+    risk_keywords: [risk, shortfall, delay, escalate, case, unable, insufficient, out of stock]
+
+ui:                            # demo UI control plane
+  host: 0.0.0.0
+  port: 8000
+
+chaos:                         # fault injection (overridable per run / from the UI)
+  enabled: false
+  target: ""                   # agent role, e.g. inventory
+  mode: none                   # none | transient_error | permanent_error | latency
+  attempts: 1                  # apply on attempts <= N (0 = every attempt)
+  latency_seconds: 0.0
+  force_hitl: false
+
+llm:
+  provider: openai             # openai | lyzr | ollama | fake
+  model: gpt-4o-mini
+  api_key: ${OPENAI_API_KEY}   # for lyzr: the Lyzr x-api-key
+  base_url: ""                 # ollama: http://localhost:11434 ; lyzr: override endpoint
+  temperature: 0.0
+  # Lyzr model router (provider: lyzr). The model is chosen on the Lyzr agent.
+  lyzr_agent_id: ${LYZR_AGENT_ID}
+  lyzr_user_id: devex-demo
+
+observability:
+  enabled: true
+  service_name: temporal-langgraph-worker
+
+  otel:
+    enabled: true
+    endpoint: http://localhost:4317
+    protocol: grpc             # grpc | http
+
+  phoenix:                     # Arize Phoenix (self-hosted LLM/agent traces)
+    enabled: false
+    transport: collector       # collector (via OTel Collector) | app (direct OTLP)
+    endpoint: http://localhost:6006
+    otlp_endpoint: http://localhost:6006/v1/traces   # used when transport=app
+
+  arize:                       # Arize Cloud (AX) LLM/agent traces
+    enabled: false
+    transport: app             # app (direct OTLP) | collector (via collector)
+    endpoint: ${ARIZE_OTLP_ENDPOINT}   # https://otlp.arize.com/v1
+    api_key: ${ARIZE_API_KEY}
+    space_id: ${ARIZE_SPACE_ID}
+    project_name: temporal-langgraph-agent
+
+  instrument_llm: false        # add OpenInference LangChain spans (prompts/tokens)
+
+  metrics:
+    enabled: true
+  traces:
+    enabled: true
+  logs:
+    enabled: true
+
+  temporal_worker_metrics:
+    enabled: true
+
+  temporal_cloud_metrics:
+    enabled: false
+    endpoint: https://metrics.temporal.io/v1/metrics
+    api_key: ${TEMPORAL_METRICS_API_KEY}
+
+  log_prompts: false
+
+infrastructure:
+  auto_start: true
+  docker_compose_file: docker-compose.yml
+  startup_timeout_seconds: 120
+
+  services:
+    temporal: true
+    otel_collector: true
+    prometheus: true
+    grafana: true
+
+  temporal_ui_url: http://localhost:8233
+  prometheus_url: http://localhost:9090
+  grafana_url: http://localhost:3000

@@ -1,0 +1,82 @@
+# Configuration for running the app services INSIDE docker-compose.
+# Uses compose service DNS names (temporal, otel-collector, servicenow-agent,
+# peer-agent). Secrets come from the environment (compose reads repo .env).
+# Select this file with APP_CONFIG_FILE=config/config.docker.yaml.
+
+app:
+  name: temporal-langgraph-agent
+  environment: local
+
+temporal:
+  mode: self_hosted
+  self_hosted:
+    address: temporal:7233
+    namespace: default
+  task_queue: langgraph-agent
+  workflow:
+    execution_timeout_seconds: 300
+  activity:
+    start_to_close_timeout_seconds: 120
+    maximum_attempts: 3
+
+langgraph:
+  enabled: false               # pure multi-agent worker
+  graph_name: hello-agent
+
+multi_agent:
+  enabled: true
+  graph_name: pepsico-order
+  lyzr_agents_file: config/lyzr_agents.yaml
+
+hitl:
+  enabled: true
+  mode: inline
+  discount_threshold: 15.0
+  approval_timeout_seconds: 86400
+  on_timeout: reject
+
+a2a:
+  enabled: true
+  agents:
+    servicenow: http://servicenow-agent:8801
+    peer: http://peer-agent:8802
+  call_timeout_seconds: 30
+
+third_party:
+  servicenow:
+    enabled: true
+    mode: simulator
+    a2a_url: http://servicenow-agent:8801
+    open_incident_on_risk: true
+
+llm:
+  provider: lyzr               # override to fake/ollama via LLM_PROVIDER
+  api_key: ${LYZR_API_KEY}
+  lyzr_agent_id: ${LYZR_AGENT_ID}
+
+observability:
+  enabled: true
+  service_name: temporal-langgraph-worker
+  otel:
+    enabled: true
+    endpoint: http://otel-collector:4317
+    protocol: grpc
+  metrics: {enabled: true}
+  traces: {enabled: true}
+  temporal_worker_metrics: {enabled: true}
+  instrument_llm: true
+  arize:
+    enabled: false             # set ARIZE_ENABLED=true + creds in .env to turn on
+    transport: app
+    endpoint: ${ARIZE_OTLP_ENDPOINT}
+    api_key: ${ARIZE_API_KEY}
+    space_id: ${ARIZE_SPACE_ID}
+    project_name: temporal-langgraph-agent
+
+infrastructure:
+  auto_start: false            # never run docker from inside a container
+  services: {temporal: true, otel_collector: true, prometheus: false, grafana: false}
+
+ui:
+  host: 0.0.0.0
+  port: 8000
