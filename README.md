@@ -32,6 +32,7 @@ stress‑test it.
 | [7. Configuration](#7-configuration) | [8. Temporal Cloud](#8-temporal-cloud-config-only) | [9. Observability](#9-observability) |
 | [10. Project layout](#10-project-layout) | [11. Testing](#11-testing) | [12. Glossary](#12-glossary-for-non-specialists) |
 | [13. SDK notes](#13-notes-on-the-current-temporal-sdk-vs-older-examples) | [14. Troubleshooting](#14-troubleshooting) | [15. Agent Studio](#15-agent-studio-guided-multi-agent-demo) |
+| [16. How a workflow/activity is built](#16-how-a-workflow-or-activity-is-built) |  |  |
 
 ---
 
@@ -468,3 +469,119 @@ The browser remembers up to 25 recent run IDs locally so a refresh or UI-process
 restart can reconnect to them. This is a demo convenience, not a shared durable
 run index. Detailed agent payloads are visible in the inspector, so use this
 local control plane only with data appropriate for the demo audience.
+
+---
+
+## 16. How a workflow or activity is built
+
+This codebase uses Temporal's two core primitives directly. **Workflows** are the
+deterministic orchestrators; **activities** are where all nondeterministic work
+(LLM calls, tools, HTTP/A2A) happens. Here is exactly how each is defined,
+registered, and invoked.
+
+### Workflows — deterministic orchestrators
+
+A workflow is a class decorated with `@workflow.defn`, with one `@workflow.run`
+entrypoint and optional `@workflow.signal` / `@workflow.query` handlers. Input is
+a single serializable dataclass. External (non‑deterministic) imports are guarded
+with `workflow.unsafe.imports_passed_through()`.
+
+```python
+# app/workflows/order_workflow.py
+with workflow.unsafe.imports_passed_through():
+    from temporalio.contrib.langgraph import graph
+    from app.platform.hitl import needs_approval, parse_discount
+
+@workflow.defn
+class OrderWorkflow:
+    @workflow.signal                      # external event resumes a durable wait
+    def decide(self, approved: bool, approver: str = "", note: str = ""): ...
+    @workflow.query                       # read-only peek at pending approval
+    def pending(self) -> dict: ...
+    @workflow.run                         # the deterministic orchestration
+    async def run(self, req: OrderWorkflowInput) -> dict: ...
+```
+
+Workflows in this repo: `AgentWorkflow` (hello agent), `OrderWorkflow`
+(multi‑agent order), `ApprovalWorkflow` (reusable HITL), `A2AWorkflow`
+(agent‑to‑agent) — all under `app/workflows/`.
+
+**Determinism rules we follow:** no clock/env/IO in workflow code; the discount
+check (`parse_discount`) is a pure function; HITL waits use
+`workflow.wait_condition(..., timeout=...)`; the LangGraph conditional edge is
+`async` so it is awaited rather than offloaded to a thread.
+
+### Activities — where real work runs
+
+There are **two kinds** of activities:
+
+**(a) LangGraph nodes run as activities.** Each graph node is tagged with
+`metadata={"execute_in": "activity", ...}`; the `LangGraphPlugin` wraps it as a
+Temporal activity automatically. Nodes must be **module‑level functions** (the
+plugin identifies them by qualified name).
+
+```python
+# app/agent/multi.py — build_order_graph()
+graph.add_node(role, _NODES[role], metadata={
+    "execute_in": "activity",
+    **build_activity_options(settings.temporal.activity),   # timeout + retry
+})
+```
+
+**(b) Plain Temporal activities.** Defined with `@activity.defn` and called from a
+workflow with `workflow.execute_activity(...)`.
+
+```python
+# app/temporal/a2a_activity.py
+@activity.defn
+async def a2a_call_activity(inp: A2ACallInput) -> str: ...
+
+# app/workflows/a2a_workflow.py
+await workflow.execute_activity(
+    a2a_call_activity, A2ACallInput(...),
+    start_to_close_timeout=timedelta(seconds=inp.timeout_seconds + 15),
+)
+```
+
+**Activity options (timeout + retry) come from config,** not hardcoded — see
+`app/temporal/retry.py` (`build_activity_options` / `build_retry_policy`), driven
+by `temporal.activity.*` in `config/config.yaml`.
+
+### Registration — the worker
+
+The worker wires graphs, workflows, and activities together
+(`app/entrypoints/worker.py`):
+
+```python
+plugin = LangGraphPlugin(
+    graphs=graphs,                                   # {name: StateGraph}
+    default_activity_options=build_activity_options(settings.temporal.activity),
+)
+worker = Worker(
+    client,
+    task_queue=settings.temporal.task_queue,
+    workflows=[AgentWorkflow, OrderWorkflow, ApprovalWorkflow, A2AWorkflow],
+    activities=[a2a_call_activity],                  # plain activities
+    plugins=[plugin],                                # LangGraph nodes -> activities
+)
+```
+
+### Invocation — the client
+
+Clients start workflows by reference and address them by id
+(`app/ui/server.py`, `app/entrypoints/order.py`, `workflow.py`, `a2a.py`):
+
+```python
+handle = await client.start_workflow(
+    OrderWorkflow.run, inp, id=workflow_id, task_queue=settings.temporal.task_queue,
+)
+# resume a HITL gate:
+await handle.signal(OrderWorkflow.decide, args=[True, "ui", "approved"])
+# inspect a pending gate:
+await handle.query(OrderWorkflow.pending)
+```
+
+**In one line:** define a workflow (`@workflow.defn`) or an activity
+(`@activity.defn`, or a `execute_in="activity"` graph node) → register both on the
+`Worker` → start it from a client with `start_workflow` / `execute_workflow`, with
+timeouts and retries resolved from config.
