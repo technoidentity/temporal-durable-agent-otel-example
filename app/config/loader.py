@@ -59,6 +59,13 @@ _ENV_OVERRIDES: dict[str, str] = {
     "OTEL_EXPORTER_OTLP_PROTOCOL": "observability.otel.protocol",
     "TEMPORAL_CLOUD_METRICS_ENABLED": "observability.temporal_cloud_metrics.enabled",
     "TEMPORAL_METRICS_API_KEY": "observability.temporal_cloud_metrics.api_key",
+    # Arize Cloud
+    "ARIZE_ENABLED": "observability.arize.enabled",
+    "ARIZE_TRANSPORT": "observability.arize.transport",
+    "ARIZE_OTLP_ENDPOINT": "observability.arize.endpoint",
+    "ARIZE_API_KEY": "observability.arize.api_key",
+    "ARIZE_SPACE_ID": "observability.arize.space_id",
+    "ARIZE_PROJECT_NAME": "observability.arize.project_name",
     # third-party (ServiceNow)
     "SERVICENOW_MODE": "third_party.servicenow.mode",
     "SERVICENOW_BASE_URL": "third_party.servicenow.base_url",

@@ -342,11 +342,29 @@ class PhoenixConfig(BaseModel):
     otlp_endpoint: str = "http://localhost:6006/v1/traces"  # app-direct OTLP HTTP
 
 
+class ArizeConfig(BaseModel):
+    """Arize Cloud (AX) for LLM/agent trace analysis. Traces are sent over OTLP
+    with ``space_id`` + ``api_key`` headers; the project is set via the
+    ``openinference.project.name`` resource attribute.
+
+    Two transports (same idea as Phoenix): ``app`` exports directly from the
+    application; ``collector`` routes via the OTel Collector's otlphttp/arize
+    exporter (ideal for a shared pipeline)."""
+
+    enabled: bool = False
+    transport: str = "app"  # app | collector
+    endpoint: str = "https://otlp.arize.com/v1"
+    api_key: str = ""
+    space_id: str = ""
+    project_name: str = "temporal-langgraph-agent"
+
+
 class ObservabilityConfig(BaseModel):
     enabled: bool = True
     service_name: str = "temporal-langgraph-worker"
     otel: OtelConfig = Field(default_factory=OtelConfig)
     phoenix: PhoenixConfig = Field(default_factory=PhoenixConfig)
+    arize: ArizeConfig = Field(default_factory=ArizeConfig)
     instrument_llm: bool = False
     metrics: SignalToggle = Field(default_factory=SignalToggle)
     traces: SignalToggle = Field(default_factory=SignalToggle)

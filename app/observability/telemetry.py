@@ -27,16 +27,42 @@ from app.config.models import AppSettings, OtelProtocol
 
 def build_resource(settings: AppSettings) -> Resource:
     """Resource attributes shared by every span and metric."""
-    return Resource.create(
-        {
-            "service.name": settings.observability.service_name,
-            "service.namespace": settings.app.name,
-            "service.version": "0.1.0",
-            "deployment.environment": settings.app.environment.value,
-            "temporal.namespace": settings.temporal.namespace,
-            "temporal.task_queue": settings.temporal.task_queue,
-        }
+    attrs = {
+        "service.name": settings.observability.service_name,
+        "service.namespace": settings.app.name,
+        "service.version": "0.1.0",
+        "deployment.environment": settings.app.environment.value,
+        "temporal.namespace": settings.temporal.namespace,
+        "temporal.task_queue": settings.temporal.task_queue,
+    }
+    if settings.observability.arize.enabled:
+        # Arize AX groups spans into a project via this resource attribute.
+        attrs["openinference.project.name"] = settings.observability.arize.project_name
+        attrs["model_id"] = settings.observability.arize.project_name
+    return Resource.create(attrs)
+
+
+def _arize_traces_url(endpoint: str) -> str:
+    ep = endpoint.rstrip("/")
+    if ep.endswith("/traces"):
+        return ep
+    if ep.endswith("/v1"):
+        return ep + "/traces"
+    return ep + "/v1/traces"
+
+
+def arize_span_processor(settings: AppSettings) -> BatchSpanProcessor:
+    """OTLP-HTTP span exporter to Arize Cloud (space_id + api_key headers)."""
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+        OTLPSpanExporter as HTTPSpanExporter,
     )
+
+    arize = settings.observability.arize
+    exporter = HTTPSpanExporter(
+        endpoint=_arize_traces_url(arize.endpoint),
+        headers={"space_id": arize.space_id, "api_key": arize.api_key},
+    )
+    return BatchSpanProcessor(exporter)
 
 
 def _span_exporter(settings: AppSettings):
@@ -114,6 +140,9 @@ def init_telemetry(settings: AppSettings) -> TelemetryHandle:
             tracer_provider.add_span_processor(
                 BatchSpanProcessor(HTTPSpanExporter(endpoint=obs.phoenix.otlp_endpoint))
             )
+        # Arize Cloud, app-direct (collector transport is wired in the collector).
+        if obs.arize.enabled and obs.arize.transport == "app":
+            tracer_provider.add_span_processor(arize_span_processor(settings))
         if obs.instrument_llm:
             _instrument_llm(tracer_provider)
 

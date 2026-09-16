@@ -62,6 +62,13 @@ exporters:
     endpoint: phoenix:4317
     tls:
       insecure: true
+  # Arize Cloud (AX) — the "via OTel Collector" trace path. Requires
+  # ARIZE_OTLP_ENDPOINT / ARIZE_SPACE_ID / ARIZE_API_KEY in the collector env.
+  otlphttp/arize:
+    endpoint: ${env:ARIZE_OTLP_ENDPOINT}
+    headers:
+      space_id: ${env:ARIZE_SPACE_ID}
+      api_key: ${env:ARIZE_API_KEY}
   # otlp/tempo:
   #   endpoint: tempo:4317
   #   tls:
@@ -80,9 +87,10 @@ service:
       processors: [memory_limiter, resource, batch]
       exporters: [prometheus]
     traces:
-      # In the full container stack, otlp/phoenix forwards traces to the Phoenix
-      # service. When running Phoenix outside Docker, drop otlp/phoenix here and
-      # set observability.phoenix.transport=app so the app exports to Phoenix.
+      # otlp/phoenix forwards to the Phoenix service (full stack). To route
+      # traces to Arize Cloud via the collector instead/also, add otlphttp/arize
+      # to this list and set ARIZE_* in the collector env. The app can also
+      # export directly (observability.{phoenix,arize}.transport=app).
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
       exporters: [debug, otlp/phoenix]

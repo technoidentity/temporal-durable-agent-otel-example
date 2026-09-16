@@ -66,6 +66,10 @@ services:
     environment:
       # Only used when the Temporal Cloud scrape is enabled in the collector config.
       TEMPORAL_METRICS_API_KEY: ${TEMPORAL_METRICS_API_KEY:-}
+      # Used only if otlphttp/arize is added to the traces pipeline (via-collector path).
+      ARIZE_OTLP_ENDPOINT: ${ARIZE_OTLP_ENDPOINT:-https://otlp.arize.com/v1}
+      ARIZE_SPACE_ID: ${ARIZE_SPACE_ID:-}
+      ARIZE_API_KEY: ${ARIZE_API_KEY:-}
     ports:
       - "4317:4317"
       - "4318:4318"

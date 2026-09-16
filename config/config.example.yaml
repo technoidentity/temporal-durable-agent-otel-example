@@ -101,11 +101,20 @@ observability:
     endpoint: http://localhost:4317
     protocol: grpc             # grpc | http
 
-  phoenix:                     # Arize Phoenix (LLM/agent traces)
+  phoenix:                     # Arize Phoenix (self-hosted LLM/agent traces)
     enabled: false
     transport: collector       # collector (via OTel Collector) | app (direct OTLP)
     endpoint: http://localhost:6006
     otlp_endpoint: http://localhost:6006/v1/traces   # used when transport=app
+
+  arize:                       # Arize Cloud (AX) LLM/agent traces
+    enabled: false
+    transport: app             # app (direct OTLP) | collector (via collector)
+    endpoint: ${ARIZE_OTLP_ENDPOINT}   # https://otlp.arize.com/v1
+    api_key: ${ARIZE_API_KEY}
+    space_id: ${ARIZE_SPACE_ID}
+    project_name: temporal-langgraph-agent
+
   instrument_llm: false        # add OpenInference LangChain spans (prompts/tokens)
 
   metrics:

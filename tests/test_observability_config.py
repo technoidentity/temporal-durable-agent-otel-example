@@ -51,3 +51,19 @@ def test_init_telemetry_disabled_is_noop():
     assert handle.tracer_provider is None
     assert handle.meter_provider is None
     handle.shutdown()  # must not raise
+
+
+def test_arize_config_and_resource():
+    from app.config.models import AppSettings
+    from app.observability.telemetry import _arize_traces_url, build_resource
+
+    assert _arize_traces_url("https://otlp.arize.com/v1") == "https://otlp.arize.com/v1/traces"
+    assert _arize_traces_url("https://otlp.arize.com/v1/traces") == "https://otlp.arize.com/v1/traces"
+    assert _arize_traces_url("https://x/") == "https://x/v1/traces"
+
+    s = AppSettings.model_validate(
+        {"observability": {"arize": {"enabled": True, "project_name": "demo", "space_id": "s", "api_key": "k"}}}
+    )
+    attrs = build_resource(s).attributes
+    assert attrs["openinference.project.name"] == "demo"
+    assert s.observability.arize.transport == "app"
