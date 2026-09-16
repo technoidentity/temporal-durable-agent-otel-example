@@ -43,6 +43,9 @@ class AgentMetrics:
         self._approvals = meter.create_counter(
             "agent.hitl.decisions", unit="1", description="HITL approval decisions"
         )
+        self._chaos = meter.create_counter(
+            "agent.chaos.injected", unit="1", description="Injected chaos faults"
+        )
 
     # --- LLM ---------------------------------------------------------------- #
     @contextmanager
@@ -91,6 +94,9 @@ class AgentMetrics:
         self._approvals.add(
             1, {"decision": "approved" if approved else "rejected", "via": via}
         )
+
+    def chaos_injected(self, mode: str, agent: str) -> None:
+        self._chaos.add(1, {"mode": mode, "agent": agent})
 
 
 _metrics: AgentMetrics | None = None

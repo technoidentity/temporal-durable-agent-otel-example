@@ -72,6 +72,14 @@ third_party:
     open_incident_on_risk: true
     risk_keywords: [risk, shortfall, delay, escalate, case, unable, insufficient, out of stock]
 
+chaos:                         # fault injection (overridable per run / from the UI)
+  enabled: false
+  target: ""                   # agent role, e.g. inventory
+  mode: none                   # none | transient_error | permanent_error | latency
+  attempts: 1                  # apply on attempts <= N (0 = every attempt)
+  latency_seconds: 0.0
+  force_hitl: false
+
 llm:
   provider: openai             # openai | lyzr | ollama | fake
   model: gpt-4o-mini

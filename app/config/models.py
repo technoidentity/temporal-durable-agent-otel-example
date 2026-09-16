@@ -240,6 +240,32 @@ class ThirdPartyConfig(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# chaos / fault injection
+# --------------------------------------------------------------------------- #
+class ChaosConfig(BaseModel):
+    """Fault injection defaults. Everything is overridable per run so the demo
+    UI can flip faults on and off live."""
+
+    enabled: bool = False
+    target: str = ""  # agent role to affect (e.g. "inventory")
+    mode: str = "none"  # none | transient_error | permanent_error | latency
+    attempts: int = 1  # apply on attempts <= N (0 = every attempt)
+    latency_seconds: float = 0.0
+    force_hitl: bool = False  # trip the approval gate regardless of discount
+
+    def as_spec(self) -> dict:
+        if not self.enabled:
+            return {}
+        return {
+            "target": self.target,
+            "mode": self.mode,
+            "attempts": self.attempts,
+            "latency_seconds": self.latency_seconds,
+            "force_hitl": self.force_hitl,
+        }
+
+
+# --------------------------------------------------------------------------- #
 # llm
 # --------------------------------------------------------------------------- #
 class LLMConfig(BaseModel):
@@ -353,6 +379,7 @@ class AppSettings(BaseModel):
     hitl: HITLConfig = Field(default_factory=HITLConfig)
     a2a: A2AConfig = Field(default_factory=A2AConfig)
     third_party: ThirdPartyConfig = Field(default_factory=ThirdPartyConfig)
+    chaos: ChaosConfig = Field(default_factory=ChaosConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     infrastructure: InfrastructureConfig = Field(default_factory=InfrastructureConfig)

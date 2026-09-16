@@ -23,11 +23,13 @@ from app.agent.nodes import build_llm
 from app.config.models import AppSettings, LLMConfig, LLMProvider
 from app.observability.metrics import get_agent_metrics
 from app.observability.tracing import get_tracer
+from app.platform.chaos import ChaosError, maybe_inject
 from app.temporal.retry import build_activity_options
 
 
 class OrderState(TypedDict, total=False):
     request: str
+    chaos: dict
     intake: str
     inventory: str
     pricing: str
@@ -44,11 +46,20 @@ _MODEL_LABEL: str = "lyzr"
 KNOWN_ROLES = ["intake", "inventory", "pricing", "fulfillment", "account", "supervisor"]
 
 
-def _run(role: str, prompt: str) -> str:
+def _run(role: str, prompt: str, chaos: dict | None = None) -> str:
     llm = _AGENTS[role]
+    metrics = get_agent_metrics()
     tracer = get_tracer()
     with tracer.start_as_current_span(f"agent.{role}"):
-        with get_agent_metrics().llm_call(_MODEL_LABEL, agent=role):
+        # Fault injection happens inside the activity so retries/timeouts are real.
+        try:
+            action = maybe_inject(role, chaos)
+        except ChaosError:
+            metrics.chaos_injected((chaos or {}).get("mode", "error"), role)
+            raise
+        if action:
+            metrics.chaos_injected(action, role)
+        with metrics.llm_call(_MODEL_LABEL, agent=role):
             return str(llm.invoke(prompt).content)
 
 
@@ -90,27 +101,27 @@ def _p_supervisor(s: OrderState) -> str:
 
 # --- module-level nodes (one per role) --------------------------------------- #
 def intake_node(state: OrderState) -> dict:
-    return {"intake": _run("intake", _p_intake(state))}
+    return {"intake": _run("intake", _p_intake(state), state.get("chaos"))}
 
 
 def inventory_node(state: OrderState) -> dict:
-    return {"inventory": _run("inventory", _p_inventory(state))}
+    return {"inventory": _run("inventory", _p_inventory(state), state.get("chaos"))}
 
 
 def pricing_node(state: OrderState) -> dict:
-    return {"pricing": _run("pricing", _p_pricing(state))}
+    return {"pricing": _run("pricing", _p_pricing(state), state.get("chaos"))}
 
 
 def fulfillment_node(state: OrderState) -> dict:
-    return {"fulfillment": _run("fulfillment", _p_fulfillment(state))}
+    return {"fulfillment": _run("fulfillment", _p_fulfillment(state), state.get("chaos"))}
 
 
 def account_node(state: OrderState) -> dict:
-    return {"account": _run("account", _p_account(state))}
+    return {"account": _run("account", _p_account(state), state.get("chaos"))}
 
 
 def supervisor_node(state: OrderState) -> dict:
-    return {"outcome": _run("supervisor", _p_supervisor(state))}
+    return {"outcome": _run("supervisor", _p_supervisor(state), state.get("chaos"))}
 
 
 _NODES: dict[str, Callable[[OrderState], dict]] = {

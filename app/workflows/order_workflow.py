@@ -39,6 +39,8 @@ class OrderWorkflowInput:
     servicenow_a2a_url: str = ""
     open_incident_on_risk: bool = False
     risk_keywords: list[str] = field(default_factory=list)
+    # Chaos / fault-injection spec (see app.platform.chaos).
+    chaos: dict = field(default_factory=dict)
 
 
 @workflow.defn
@@ -110,13 +112,14 @@ class OrderWorkflow:
     @workflow.run
     async def run(self, req: OrderWorkflowInput) -> dict:
         app = graph(req.graph_name).compile()
-        result = await app.ainvoke({"request": req.request})
+        result = await app.ainvoke({"request": req.request, "chaos": req.chaos})
         out = {stage: result.get(stage, "") for stage in _STAGES}
 
         discount = parse_discount(req.request)
-        required = req.hitl_enabled and needs_approval(discount, req.discount_threshold)
+        forced = bool(req.chaos.get("force_hitl"))
+        required = req.hitl_enabled and (needs_approval(discount, req.discount_threshold) or forced)
         if required:
-            decision = await self._approval_gate(req, float(discount))
+            decision = await self._approval_gate(req, float(discount or 0.0))
         else:
             decision = {"approved": True, "approver": "", "note": "", "via": "auto"}
 

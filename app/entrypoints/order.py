@@ -40,6 +40,7 @@ async def execute(settings: AppSettings, request: str, workflow_id: str | None, 
         servicenow_a2a_url=sn.a2a_url if sn.enabled else "",
         open_incident_on_risk=sn.enabled and sn.open_incident_on_risk,
         risk_keywords=list(sn.risk_keywords),
+        chaos=overrides.get("chaos", settings.chaos.as_spec()),
     )
 
     telemetry = init_telemetry(settings)
@@ -104,7 +105,14 @@ async def execute(settings: AppSettings, request: str, workflow_id: str | None, 
 @click.option("--timeout", type=int, default=None, help="Approval wait timeout (seconds).")
 @click.option("--mode", type=click.Choice(["inline", "child"]), default=None, help="HITL mode.")
 @click.option("--no-hitl", is_flag=True, help="Disable the approval gate for this run.")
-def main(request, workflow_id, threshold, timeout, mode, no_hitl) -> None:
+@click.option("--chaos-target", default=None, help="Agent role to inject a fault into.")
+@click.option("--chaos-mode", type=click.Choice(["transient_error", "permanent_error", "latency"]),
+              default=None, help="Fault mode.")
+@click.option("--chaos-attempts", type=int, default=1, help="Apply on attempts <= N (0=all).")
+@click.option("--chaos-latency", type=float, default=0.0, help="Latency seconds (mode=latency).")
+@click.option("--force-hitl", is_flag=True, help="Force the approval gate this run.")
+def main(request, workflow_id, threshold, timeout, mode, no_hitl,
+         chaos_target, chaos_mode, chaos_attempts, chaos_latency, force_hitl) -> None:
     settings = load_settings()
     if not settings.multi_agent.enabled:
         raise SystemExit("multi_agent.enabled is false; enable it in config to run orders")
@@ -117,6 +125,14 @@ def main(request, workflow_id, threshold, timeout, mode, no_hitl) -> None:
         overrides["mode"] = mode
     if no_hitl:
         overrides["hitl_enabled"] = False
+    if chaos_target or chaos_mode or force_hitl:
+        overrides["chaos"] = {
+            "target": chaos_target or "",
+            "mode": chaos_mode or "none",
+            "attempts": chaos_attempts,
+            "latency_seconds": chaos_latency,
+            "force_hitl": force_hitl,
+        }
     asyncio.run(execute(settings, request, workflow_id, overrides))
 
 
