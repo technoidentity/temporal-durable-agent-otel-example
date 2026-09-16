@@ -1,231 +1,456 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>PepsiCo Agent Ops</title>
-<style>
-  :root{
-    --pep-blue:#004b93; --pep-blue-2:#0a6cc9; --pep-red:#eb1933;
-    --ink:#0e1726; --muted:#5b6b82; --line:#e5ebf2; --bg:#f4f7fb; --card:#fff;
-    --ok:#127a3e; --warn:#b7791f; --bad:#c02a37;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;font:14px/1.45 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
-  header{background:linear-gradient(90deg,var(--pep-blue),var(--pep-blue-2));color:#fff;padding:12px 20px;display:flex;align-items:center;gap:14px}
-  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;letter-spacing:.2px}
-  .globe{width:24px;height:24px;border-radius:50%;background:conic-gradient(var(--pep-red) 0 50%,#fff 50% 100%);border:2px solid #fff;box-shadow:0 0 0 1px var(--pep-blue)}
-  header .spacer{flex:1}
-  header a,header .badge{color:#eaf2fb;text-decoration:none;font-size:12px;margin-left:12px;opacity:.95}
-  header a:hover{text-decoration:underline}
-  .badge{background:rgba(255,255,255,.15);padding:2px 8px;border-radius:999px}
-  main{max-width:1180px;margin:18px auto;padding:0 16px;display:grid;grid-template-columns:400px 1fr;gap:16px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 1px 2px rgba(16,32,60,.04)}
-  h2{margin:0 0 12px;font-size:15px}
-  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px;font-weight:600}
-  textarea,input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fbfdff}
-  textarea{resize:vertical;min-height:64px}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-  .presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-  .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 10px;font-size:12px;cursor:pointer}
-  .chip:hover{border-color:var(--pep-blue-2);color:var(--pep-blue)}
-  fieldset{border:1px dashed var(--line);border-radius:10px;margin:12px 0 0;padding:10px 12px}
-  legend{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;padding:0 6px}
-  .inline{display:flex;align-items:center;gap:8px;margin-top:8px}
-  .inline input[type=checkbox]{width:auto}
-  button.run{margin-top:14px;width:100%;background:var(--pep-red);color:#fff;border:0;border-radius:9px;padding:11px;font-weight:700;font-size:14px;cursor:pointer}
-  button.run:hover{filter:brightness(.96)}
-  .runs{display:flex;flex-direction:column;gap:10px}
-  .run{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fff}
-  .run .top{display:flex;align-items:center;gap:8px}
-  .run .id{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--muted)}
-  .pill{font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.4px}
-  .pill.RUNNING{background:#e7f0fb;color:var(--pep-blue)}
-  .pill.COMPLETED{background:#e6f5ec;color:var(--ok)}
-  .pill.FAILED,.pill.TERMINATED,.pill.TIMED_OUT{background:#fdeaec;color:var(--bad)}
-  .pill.PENDING{background:#fdf3e2;color:var(--warn)}
-  .req{margin:8px 0;color:var(--ink)}
-  .stages{display:flex;flex-direction:column;gap:6px;margin-top:8px}
-  .stage{border-left:3px solid var(--pep-blue-2);background:#f8fbff;padding:6px 10px;border-radius:0 8px 8px 0}
-  .stage b{display:block;font-size:11px;color:var(--pep-blue);text-transform:uppercase;letter-spacing:.4px}
-  .stage span{white-space:pre-wrap;font-size:13px;color:#243449}
-  .approval{margin-top:8px;padding:8px 10px;border-radius:8px;background:#fdf3e2;border:1px solid #f3dcae}
-  .approval.ok{background:#e6f5ec;border-color:#bfe6cd}
-  .incident{margin-top:8px;padding:8px 10px;border-radius:8px;background:#eef2f9;border:1px solid var(--line);font-size:13px}
-  .approve-row{display:flex;gap:8px;margin-top:8px}
-  .btn{border:0;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;font-size:13px}
-  .btn.ok{background:var(--ok);color:#fff}
-  .btn.no{background:#fff;color:var(--bad);border:1px solid #f0c4c9}
-  .empty{color:var(--muted);text-align:center;padding:24px}
-  .hint{font-size:11px;color:var(--muted);margin-top:4px}
-</style>
-</head>
-<body>
-<header>
-  <span class="globe"></span>
-  <span class="brand">PepsiCo Agent Ops <span class="badge" id="env">·</span> <span class="badge" id="provider">·</span></span>
-  <span class="spacer"></span>
-  <a id="lnk-temporal" target="_blank">Temporal</a>
-  <a id="lnk-grafana" target="_blank">Grafana</a>
-  <a id="lnk-prom" target="_blank">Prometheus</a>
-  <a id="lnk-phoenix" target="_blank">Phoenix</a>
-</header>
-
-<main>
-  <section class="card">
-    <h2>New order</h2>
-    <label>Distributor request</label>
-    <textarea id="request" placeholder="e.g. Star Distributors: 500 cases of Pepsi 330ml at 20% discount"></textarea>
-    <div class="presets" id="presets"></div>
-
-    <fieldset>
-      <legend>Approval (HITL)</legend>
-      <div class="row">
-        <div><label>Discount threshold %</label><input id="threshold" type="number" step="1" /></div>
-        <div><label>Mode</label><select id="hitl_mode"><option value="inline">inline</option><option value="child">child</option></select></div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#142b45" />
+    <title>PepsiCo · Agent Studio</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23142b45'/%3E%3Cpath d='M8 10h16M8 16h10M8 22h16' stroke='white' stroke-width='3'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/static/studio.css" />
+    <script src="/static/studio.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#workspace">Skip to workflow</a>
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="PepsiCo Agent Studio home"
+        ><span class="brand-mark" aria-hidden="true"
+          ><svg viewBox="0 0 32 32">
+            <path d="M7 9h18M7 16h12M7 23h18" /></svg></span
+        ><strong>PepsiCo</strong><span class="brand-divider"></span
+        ><span>Agent Studio</span></a
+      >
+      <div class="header-right">
+        <span class="environment" id="environment">Connecting</span
+        ><span class="avatar" title="Local demo workspace">PC</span>
       </div>
-      <div class="inline"><input type="checkbox" id="no_hitl" /><label style="margin:0">Disable approval gate</label></div>
-      <div class="inline"><input type="checkbox" id="force_hitl" /><label style="margin:0">Force approval (chaos)</label></div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Chaos / fault injection</legend>
-      <div class="row3">
-        <div><label>Target agent</label><select id="chaos_target"></select></div>
-        <div><label>Fault</label><select id="chaos_mode">
-          <option value="none">none</option>
-          <option value="transient_error">transient_error</option>
-          <option value="permanent_error">permanent_error</option>
-          <option value="latency">latency</option>
-        </select></div>
-        <div><label>Attempts</label><input id="chaos_attempts" type="number" value="1" /></div>
-      </div>
-      <label>Latency seconds (latency mode)</label><input id="chaos_latency" type="number" step="0.5" value="0" />
-      <div class="hint">transient=fail then recover · permanent=fail all attempts · latency>timeout=real timeout+retry</div>
-    </fieldset>
-
-    <div class="hint" id="sn-hint"></div>
-    <button class="run" id="run">Run order</button>
-  </section>
-
-  <section class="card">
-    <h2>Runs</h2>
-    <div class="runs" id="runs"><div class="empty">No runs yet — start one on the left.</div></div>
-  </section>
-</main>
-
-<script>
-const $ = s => document.querySelector(s);
-let META = null;
-const seen = new Map();
-
-async function j(url, opts){ const r = await fetch(url, opts); return r.json(); }
-
-async function loadMeta(){
-  META = await j('/api/meta');
-  $('#env').textContent = META.environment;
-  $('#provider').textContent = 'LLM: ' + META.provider;
-  $('#threshold').value = META.hitl.threshold;
-  $('#hitl_mode').value = META.hitl.mode;
-  const tgt = $('#chaos_target');
-  tgt.innerHTML = '<option value="">(none)</option>' + META.agents.map(a=>`<option value="${a}">${a}</option>`).join('');
-  const L = META.links;
-  $('#lnk-temporal').href=L.temporal_ui; $('#lnk-grafana').href=L.grafana;
-  $('#lnk-prom').href=L.prometheus; $('#lnk-phoenix').href=L.phoenix;
-  $('#sn-hint').textContent = 'ServiceNow: ' + (META.servicenow_enabled ? 'enabled — incidents open on fulfillment risk' : 'disabled');
-  const presets = [
-    'Star Distributors: 500 cases of Pepsi 330ml at 20% discount',
-    'Metro Foods: 200 cases of Mountain Dew 500ml at 10% discount',
-    'URGENT rush: 8000 cases in 24h, stock may be insufficient, 10% discount'
-  ];
-  $('#presets').innerHTML = presets.map((p,i)=>`<span class="chip" data-p="${i}">${p.slice(0,34)}…</span>`).join('');
-  $('#presets').querySelectorAll('.chip').forEach((c,i)=>c.onclick=()=>$('#request').value=presets[i]);
-}
-
-async function startOrder(){
-  const request = $('#request').value.trim();
-  if(!request){ $('#request').focus(); return; }
-  const chaos = {
-    target: $('#chaos_target').value,
-    mode: $('#chaos_mode').value,
-    attempts: parseInt($('#chaos_attempts').value||'1'),
-    latency_seconds: parseFloat($('#chaos_latency').value||'0'),
-    force_hitl: $('#force_hitl').checked
-  };
-  const body = {
-    request,
-    threshold: parseFloat($('#threshold').value),
-    hitl_mode: $('#hitl_mode').value,
-    no_hitl: $('#no_hitl').checked,
-    chaos
-  };
-  $('#run').disabled = true; $('#run').textContent = 'Starting…';
-  try{
-    const res = await j('/api/orders', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    seen.set(res.workflow_id, {id:res.workflow_id, request});
-    render();
-  } finally { $('#run').disabled=false; $('#run').textContent='Run order'; }
-}
-
-function stageHTML(result){
-  if(!result) return '';
-  const order = ['intake','inventory','pricing','fulfillment','account','outcome'];
-  let h = '<div class="stages">';
-  for(const k of order){ if(result[k]) h += `<div class="stage"><b>${k}</b><span>${escapeHtml(result[k])}</span></div>`; }
-  h += '</div>';
-  const ap = result.approval;
-  if(ap){
-    const ok = ap.approved;
-    h += `<div class="approval ${ok?'ok':''}">Approval: <b>${ap.approved?'approved':'rejected'}</b> · ${ap.via}${ap.required?` · discount ${ap.discount}% vs ${ap.threshold}%`:' (auto)'}</div>`;
-  }
-  if(result.incident){ h += `<div class="incident">🎫 ${escapeHtml(result.incident)}</div>`; }
-  return h;
-}
-
-function escapeHtml(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
-
-function render(){
-  const el = $('#runs');
-  if(seen.size===0){ el.innerHTML='<div class="empty">No runs yet — start one on the left.</div>'; return; }
-  el.innerHTML = '';
-  for(const r of seen.values()){
-    const st = r.status || 'RUNNING';
-    const pill = r.pending && r.pending.pending ? 'PENDING' : st;
-    const div = document.createElement('div');
-    div.className='run';
-    let inner = `<div class="top"><span class="pill ${pill}">${pill}</span><span class="id">${r.id}</span></div>
-      <div class="req">${escapeHtml(r.request||'')}</div>`;
-    if(r.pending && r.pending.pending){
-      inner += `<div class="approval">${escapeHtml(r.pending.details||'Approval required')}</div>
-        <div class="approve-row"><button class="btn ok" data-ok="${r.id}">Approve</button>
-        <button class="btn no" data-no="${r.id}">Reject</button></div>`;
-    }
-    inner += stageHTML(r.result);
-    div.innerHTML = inner;
-    el.appendChild(div);
-  }
-  el.querySelectorAll('[data-ok]').forEach(b=>b.onclick=()=>decide(b.getAttribute('data-ok'),true));
-  el.querySelectorAll('[data-no]').forEach(b=>b.onclick=()=>decide(b.getAttribute('data-no'),false));
-}
-
-async function decide(id, approved){
-  await j(`/api/orders/${id}/decision`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({approved,approver:'ui',note:approved?'approved via UI':'rejected via UI'})});
-  poll();
-}
-
-async function poll(){
-  for(const id of seen.keys()){
-    try{
-      const s = await j('/api/orders/'+id);
-      const r = seen.get(id); r.status=s.status; r.pending=s.pending; r.result=s.result;
-    }catch(e){}
-  }
-  render();
-}
-
-$('#run').onclick = startOrder;
-loadMeta().then(()=>{ render(); setInterval(poll, 2000); });
-</script>
-</body>
+    </header>
+    <div class="app-layout">
+      <aside class="rail" aria-label="Workspace navigation">
+        <a
+          href="#workspace"
+          class="rail-item current"
+          aria-label="Order workflows"
+          title="Order workflows"
+          data-icon="workflow"
+        ></a
+        ><a
+          href="#recent"
+          class="rail-item"
+          aria-label="Recent runs"
+          title="Recent runs"
+          data-icon="history"
+        ></a
+        ><a
+          href="#tools"
+          class="rail-item"
+          aria-label="Observability tools"
+          title="Observability tools"
+          data-icon="chart"
+        ></a
+        ><span class="rail-bottom">DEMO</span>
+      </aside>
+      <main id="workspace">
+        <div class="page-heading">
+          <div>
+            <h1>Order orchestration</h1>
+            <p>One request. A team of agents. Every step in view.</p>
+          </div>
+          <div class="provider-tag" id="provider">Loading configuration…</div>
+        </div>
+        <div class="studio-layout">
+          <aside class="composer-column">
+            <section class="composer surface" aria-labelledby="new-title">
+              <div class="section-heading">
+                <h2 id="new-title">Start an order</h2>
+                <span class="small-icon" data-icon="plus"></span>
+              </div>
+              <form id="order-form">
+                <label for="scenario">Try a scenario</label>
+                <select id="scenario">
+                  <option value="standard">Standard order</option>
+                  <option value="approval" selected>Discount exception</option>
+                  <option value="recovery">Retry & recover</option>
+                  <option value="risk">Fulfillment risk</option>
+                </select>
+                <label for="request">Distributor request</label>
+                <textarea
+                  id="request"
+                  rows="5"
+                  required
+                  maxlength="10000"
+                  placeholder="Describe the order, quantity, and discount…"
+                >
+Star Distributors: 500 cases of Pepsi 330ml at 20% discount</textarea>
+                <p class="field-help" id="scenario-help">
+                  A discount above 15% pauses for a human decision.
+                </p>
+                <details class="settings" id="approval-settings">
+                  <summary>
+                    <span data-icon="shield"></span>Approval rules<span
+                      class="summary-value"
+                      id="approval-summary"
+                      >Above 15%</span
+                    >
+                  </summary>
+                  <div class="settings-body">
+                    <div class="field-pair">
+                      <div>
+                        <label for="threshold">Discount threshold (%)</label
+                        ><input
+                          id="threshold"
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.5"
+                          value="15"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label for="hitl-mode">Approval workflow</label
+                        ><select id="hitl-mode">
+                          <option value="inline">In this workflow</option>
+                          <option value="child">Child workflow</option>
+                        </select>
+                      </div>
+                    </div>
+                    <label class="check-row"
+                      ><input id="no-hitl" type="checkbox" />Skip
+                      approval</label
+                    ><label class="check-row"
+                      ><input id="force-hitl" type="checkbox" />Always ask for
+                      approval</label
+                    >
+                    <p class="field-help">
+                      The approval gate follows the agent pipeline.
+                    </p>
+                  </div>
+                </details>
+                <details class="settings" id="fault-settings">
+                  <summary>
+                    <span data-icon="bolt"></span>Test resilience<span
+                      class="summary-value"
+                      id="fault-summary"
+                      >Off</span
+                    >
+                  </summary>
+                  <div class="settings-body">
+                    <label for="chaos-mode">Inject a fault</label
+                    ><select id="chaos-mode">
+                      <option value="none">No fault</option>
+                      <option value="transient_error">Temporary failure</option>
+                      <option value="permanent_error">Repeated failure</option>
+                      <option value="latency">Slow response</option>
+                    </select>
+                    <div id="fault-fields" hidden>
+                      <label for="chaos-target">Target agent</label
+                      ><select id="chaos-target"></select>
+                      <div class="field-pair">
+                        <div>
+                          <label for="chaos-attempts">Affected attempts</label
+                          ><input
+                            id="chaos-attempts"
+                            type="number"
+                            min="0"
+                            value="1"
+                            required
+                          />
+                        </div>
+                        <div id="latency-field" hidden>
+                          <label for="chaos-latency">Delay (seconds)</label
+                          ><input
+                            id="chaos-latency"
+                            type="number"
+                            min="0"
+                            max="3600"
+                            step="0.5"
+                            value="5"
+                            required
+                          />
+                        </div>
+                      </div>
+                      <p class="field-help">
+                        0 affects every attempt. Temporal applies the configured
+                        retry policy.
+                      </p>
+                    </div>
+                  </div>
+                </details>
+                <div
+                  id="form-error"
+                  class="error-message"
+                  role="alert"
+                  hidden
+                ></div>
+                <button
+                  id="run"
+                  class="button primary run-button"
+                  type="submit"
+                >
+                  <span data-icon="play"></span
+                  ><span id="run-label">Run order</span
+                  ><span class="key-hint">↵</span>
+                </button>
+                <p class="composer-footnote" id="run-mode">
+                  Runs on Temporal · demo model
+                </p>
+              </form>
+            </section>
+            <section class="recent" id="recent" aria-labelledby="recent-title">
+              <div class="section-heading">
+                <h2 id="recent-title">Recent runs</h2>
+                <span id="run-count" class="count">0</span>
+              </div>
+              <div id="recent-runs">
+                <p class="muted empty-runs">Your runs will appear here.</p>
+              </div>
+            </section>
+            <section class="tools" id="tools" aria-labelledby="tools-title">
+              <h2 id="tools-title">Explore the evidence</h2>
+              <div class="tool-links">
+                <a id="lnk-temporal" target="_blank" rel="noopener"
+                  >Temporal <span>Workflow history ↗</span></a
+                ><a id="lnk-phoenix" target="_blank" rel="noopener"
+                  >Phoenix <span>Agent traces ↗</span></a
+                ><a id="lnk-grafana" target="_blank" rel="noopener"
+                  >Grafana <span>Metrics dashboard ↗</span></a
+                ><a id="lnk-prom" target="_blank" rel="noopener"
+                  >Prometheus <span>Metric queries ↗</span></a
+                >
+              </div>
+            </section>
+          </aside>
+          <section class="execution surface" aria-labelledby="execution-title">
+            <header class="execution-header" tabindex="-1">
+              <div class="execution-title-row">
+                <h2 id="execution-title">Workflow explorer</h2>
+                <span id="run-status" class="status neutral">Ready to run</span>
+              </div>
+              <p id="run-request">
+                Start an order to follow the agent handoffs in real time.
+              </p>
+              <div class="execution-meta">
+                <span id="workflow-id">No run selected</span
+                ><span id="elapsed"></span
+                ><a id="workflow-link" target="_blank" rel="noopener" hidden
+                  >Open in Temporal ↗</a
+                >
+              </div>
+            </header>
+            <div class="view-toolbar">
+              <div class="view-tabs" role="tablist" aria-label="Execution view">
+                <button
+                  role="tab"
+                  id="tab-workflow"
+                  aria-selected="true"
+                  aria-controls="panel-workflow"
+                  data-tab="workflow"
+                >
+                  Workflow</button
+                ><button
+                  role="tab"
+                  id="tab-timeline"
+                  aria-selected="false"
+                  aria-controls="panel-timeline"
+                  tabindex="-1"
+                  data-tab="timeline"
+                >
+                  Activity log <span id="event-count">0</span></button
+                ><button
+                  role="tab"
+                  id="tab-result"
+                  aria-selected="false"
+                  aria-controls="panel-result"
+                  tabindex="-1"
+                  data-tab="result"
+                >
+                  Result
+                </button>
+              </div>
+              <span class="sync-status" id="sync-status"
+                ><i></i>Waiting for a run</span
+              >
+            </div>
+            <div
+              id="connection-error"
+              class="connection-error"
+              role="status"
+              hidden
+            ></div>
+            <div
+              id="panel-workflow"
+              role="tabpanel"
+              aria-labelledby="tab-workflow"
+            >
+              <div class="explorer-grid">
+                <section class="flow-pane" aria-label="Agent execution map">
+                  <div class="flow-heading">
+                    <span
+                      class="orchestrator-symbol"
+                      data-icon="workflow"
+                    ></span>
+                    <div>
+                      <h3>Temporal workflow</h3>
+                      <p>Coordinates each agent and preserves progress</p>
+                    </div>
+                    <span class="live-label" id="flow-live">Preview</span>
+                  </div>
+                  <div class="flow-canvas" id="flow-canvas">
+                    <svg
+                      class="connectors"
+                      id="connectors"
+                      aria-hidden="true"
+                    ></svg>
+                    <div class="agent-grid" id="agent-grid"></div>
+                  </div>
+                  <div class="flow-tail">
+                    <div class="tail-connector" aria-hidden="true"></div>
+                    <button class="gate-node" id="approval-node" type="button">
+                      <span class="gate-symbol" data-icon="shield"></span
+                      ><span
+                        ><strong>Approval gate</strong
+                        ><small id="gate-caption"
+                          >Automatic or human decision</small
+                        ></span
+                      ><span id="gate-state" class="mini-status">Waiting</span>
+                    </button>
+                    <div id="service-step" hidden>
+                      <div class="tail-connector" aria-hidden="true"></div>
+                      <button
+                        class="gate-node service-node"
+                        id="service-node"
+                        type="button"
+                      >
+                        <span class="gate-symbol" data-icon="workflow"></span
+                        ><span
+                          ><strong>ServiceNow agent</strong
+                          ><small id="service-caption"
+                            >Optional incident handoff · A2A</small
+                          ></span
+                        ><span id="service-state" class="mini-status"
+                          >Conditional</span
+                        >
+                      </button>
+                    </div>
+                    <div class="tail-connector" aria-hidden="true"></div>
+                    <div class="finish-node">
+                      <span data-icon="flag"></span
+                      ><span id="finish-caption">Order outcome</span
+                      ><span class="mini-status" id="finish-state"
+                        >Waiting</span
+                      >
+                    </div>
+                    <p class="integration-caption" id="integration-caption">
+                      ServiceNow handoff is not enabled.
+                    </p>
+                  </div>
+                  <div class="map-legend">
+                    <span><i class="legend-dot completed"></i>Complete</span
+                    ><span><i class="legend-dot running"></i>Active</span
+                    ><span
+                      ><i class="legend-dot approval"></i>Needs attention</span
+                    ><span><i class="legend-dot waiting"></i>Waiting</span>
+                  </div>
+                  <p class="map-note">
+                    Select an agent to explore its handoff.<br />Agents run in
+                    sequence; approvals follow their recommendations.
+                  </p>
+                </section>
+                <aside
+                  class="inspector"
+                  tabindex="-1"
+                  aria-label="Selected step details"
+                >
+                  <div class="inspector-label">
+                    Step inspector <span data-icon="sliders"></span>
+                  </div>
+                  <div id="inspector-content"></div>
+                </aside>
+              </div>
+            </div>
+            <div
+              id="panel-timeline"
+              role="tabpanel"
+              aria-labelledby="tab-timeline"
+              hidden
+            >
+              <div class="tab-content">
+                <h3>Execution activity</h3>
+                <p class="muted">
+                  Committed events from Temporal history. An agent may retry
+                  before its final attempt is recorded.
+                </p>
+                <ol id="timeline" class="timeline"></ol>
+              </div>
+            </div>
+            <div
+              id="panel-result"
+              role="tabpanel"
+              aria-labelledby="tab-result"
+              hidden
+            >
+              <div class="tab-content" id="result-content"></div>
+            </div>
+            <section
+              id="approval-action"
+              class="approval-action"
+              aria-labelledby="decision-title"
+              hidden
+            >
+              <div class="approval-message">
+                <span data-icon="shield"></span>
+                <div>
+                  <h3 id="decision-title">Your decision is needed</h3>
+                  <p id="approval-details"></p>
+                  <small id="approval-location"></small>
+                </div>
+              </div>
+              <form id="decision-form">
+                <label for="decision-note"
+                  >Decision note <span class="optional">(optional)</span></label
+                ><input
+                  id="decision-note"
+                  placeholder="Add context for the audit trail"
+                  maxlength="1000"
+                />
+                <div class="decision-buttons">
+                  <button class="button approve" id="approve" type="submit">
+                    Approve order</button
+                  ><button class="button reject" id="reject" type="button">
+                    Reject order
+                  </button>
+                </div>
+                <p id="decision-feedback" role="status" hidden></p>
+              </form>
+            </section>
+            <footer class="execution-footer">
+              <span data-icon="lock"></span
+              ><span id="evidence-note"
+                >Execution states come from Temporal. Model responses depend on
+                the selected provider.</span
+              >
+            </footer>
+          </section>
+        </div>
+        <footer class="page-footer">
+          <span
+            >PepsiCo Agent Studio <span class="footer-dot">·</span> Local
+            reference application</span
+          ><span
+            >LangGraph agents <span class="footer-dot">/</span> Temporal
+            orchestration <span class="footer-dot">/</span> OpenTelemetry</span
+          >
+        </footer>
+      </main>
+    </div>
+    <div
+      class="sr-only"
+      id="announcement"
+      role="status"
+      aria-live="polite"
+    ></div>
+  </body>
 </html>

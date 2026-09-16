@@ -25,6 +25,9 @@ class FakeHandle:
     async def result(self):
         return self._state.get("result")
 
+    async def fetch_history(self):
+        return SimpleNamespace(events=self._state.get("events", []))
+
 
 class FakeClient:
     def __init__(self):
@@ -102,3 +105,42 @@ def test_list_orders_tracks_runs():
     client.post("/api/orders", json={"request": "b at 20% discount"})
     runs = client.get("/api/orders").json()["runs"]
     assert len(runs) == 2
+
+
+def test_decision_rejects_closed_or_nonpending_workflow():
+    client, fake = _client_and_fake()
+    wfid = client.post("/api/orders", json={"request": "order"}).json()["workflow_id"]
+    fake.states[wfid]["pending"] = {"pending": False}
+    assert client.post(f"/api/orders/{wfid}/decision", json={"approved": True}).status_code == 409
+    fake.states[wfid]["status"] = "COMPLETED"
+    assert client.post(f"/api/orders/{wfid}/decision", json={"approved": True}).status_code == 409
+
+
+def test_child_approval_is_queried_and_signaled():
+    from temporalio.api.history.v1 import HistoryEvent, ChildWorkflowExecutionStartedEventAttributes
+    from temporalio.api.common.v1 import WorkflowExecution, WorkflowType
+
+    client, fake = _client_and_fake()
+    wfid = client.post("/api/orders", json={"request": "order", "hitl_mode": "child"}).json()["workflow_id"]
+    child = f"{wfid}-approval"
+    fake.states[wfid]["events"] = [HistoryEvent(
+        event_id=10,
+        child_workflow_execution_started_event_attributes=ChildWorkflowExecutionStartedEventAttributes(
+            workflow_execution=WorkflowExecution(workflow_id=child),
+            workflow_type=WorkflowType(name="ApprovalWorkflow"),
+        ),
+    )]
+    fake.states[child] = {"status": "RUNNING", "pending": {"pending": True, "details": "Child gate"}}
+    assert client.get(f"/api/orders/{wfid}").json()["pending"]["details"] == "Child gate"
+    assert client.post(f"/api/orders/{wfid}/decision", json={"approved": False}).status_code == 200
+    assert fake.states[child]["signalled"] == [False, "ui", ""]
+    assert "signalled" not in fake.states[wfid]
+
+
+def test_invalid_order_inputs_are_rejected():
+    client, fake = _client_and_fake()
+    for body in ({"request": " "}, {"request": "x", "threshold": -1},
+                 {"request": "x", "hitl_mode": "unknown"},
+                 {"request": "x", "chaos": {"attempts": -1}}):
+        assert client.post("/api/orders", json=body).status_code == 422
+    assert not fake.started

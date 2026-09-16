@@ -315,7 +315,7 @@ tests/            unit tests (mock Docker/OTLP/Temporal — no external services
 ## 11. Testing
 
 ```bash
-make test        # 70 unit tests; no external services required
+make test        # unit tests; no external services required
 ```
 
 Covers: config parsing + env overrides, Temporal mode/cloud validation, agent &
@@ -377,4 +377,44 @@ Built against `temporalio==1.33.0`. Intentional differences from stale samples:
   `ARIZE_SPACE_ID` / `ARIZE_API_KEY` if you see 401/403.
 - **Ports already in use** — the bundled compose uses canonical ports; if you run
   your own Prometheus/Grafana elsewhere, point config/`.env` at those instead.
+
+---
+
+## 15. Agent Studio: guided multi-agent demo
+
+The UI at http://localhost:8000 shows the actual agent sequence, activity inputs
+and outputs, retry attempts, approval gates (including child workflows), and the
+optional ServiceNow A2A handoff. Select a step for details, or switch to **Activity
+log** and **Result**. The four scenario presets populate the request and fault
+settings; approval rules and fault controls remain editable.
+
+The configuration below is an optional local demo preset. For Arize Cloud, use
+the Arize configuration described above and its environment overrides.
+
+Use the same demo configuration for all three processes. Start infrastructure
+first, then leave each process running in its own terminal:
+
+```bash
+docker compose up -d
+APP_CONFIG_FILE=config/demo.yaml .venv/bin/python -m app.entrypoints.worker
+APP_CONFIG_FILE=config/demo.yaml .venv/bin/python -m app.entrypoints.servicenow_agent --host 127.0.0.1
+APP_CONFIG_FILE=config/demo.yaml .venv/bin/python -m app.entrypoints.ui
 ```
+
+`config/demo.yaml` enables the six-agent pipeline, a local ServiceNow simulator,
+Phoenix instrumentation, and the deterministic fake model. These are real
+Temporal executions with demo model responses; no external ServiceNow tickets or
+LLM API calls are made by this configuration. Existing environment overrides
+still take precedence. The demo allows 30 minutes for a human decision within a
+one-hour workflow execution timeout.
+
+Progress is projected from Temporal history and pending activities. The UI does
+not animate invented progress. Temporal may compact intermediate retry events;
+the inspector shows the observed attempt count and last failure rather than an
+invented event for each attempt. The approval gate follows the whole agent
+pipeline; rejection completes the workflow with an **Order rejected** outcome.
+
+The browser remembers up to 25 recent run IDs locally so a refresh or UI-process
+restart can reconnect to them. This is a demo convenience, not a shared durable
+run index. Detailed agent payloads are visible in the inspector, so use this
+local control plane only with data appropriate for the demo audience.

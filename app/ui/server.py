@@ -11,35 +11,44 @@ from __future__ import annotations
 import uuid
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from app.agent.multi import KNOWN_ROLES
 from app.config.models import AppSettings
 from app.temporal.client import create_temporal_client
 from app.workflows.order_workflow import OrderWorkflow, OrderWorkflowInput
+from app.workflows.approval_workflow import ApprovalWorkflow
+from app.ui.execution import execution_view
 
 _STATIC = Path(__file__).parent / "static"
 
 
 class ChaosIn(BaseModel):
     target: str = ""
-    mode: str = "none"
-    attempts: int = 1
-    latency_seconds: float = 0.0
+    mode: Literal["none", "transient_error", "permanent_error", "latency"] = "none"
+    attempts: int = Field(default=1, ge=0)
+    latency_seconds: float = Field(default=0.0, ge=0, le=3600)
     force_hitl: bool = False
 
 
 class OrderIn(BaseModel):
-    request: str
-    threshold: float | None = None
-    hitl_mode: str | None = None
+    request: str = Field(min_length=1, max_length=10000)
+    threshold: float | None = Field(default=None, ge=0, le=100)
+    hitl_mode: Literal["inline", "child"] | None = None
     no_hitl: bool = False
     chaos: ChaosIn | None = None
+
+    @field_validator("request")
+    @classmethod
+    def nonblank_request(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Enter a distributor request.")
+        return value.strip()
 
 
 class DecisionIn(BaseModel):
@@ -80,6 +89,9 @@ def create_ui_app(
             "provider": settings.llm.provider.value,
             "graph_name": settings.multi_agent.graph_name,
             "agents": list(KNOWN_ROLES),
+            "pipeline": [r for r in settings.multi_agent.pipeline if r in KNOWN_ROLES],
+            "namespace": settings.temporal.namespace,
+            "multi_agent_enabled": settings.multi_agent.enabled,
             "hitl": {
                 "enabled": settings.hitl.enabled,
                 "threshold": settings.hitl.discount_threshold,
@@ -87,6 +99,7 @@ def create_ui_app(
             },
             "chaos_modes": ["transient_error", "permanent_error", "latency"],
             "servicenow_enabled": sn.enabled,
+            "servicenow_mode": sn.mode,
             "links": {
                 "temporal_ui": settings.infrastructure.temporal_ui_url,
                 "grafana": settings.infrastructure.grafana_url,
@@ -141,23 +154,39 @@ def create_ui_app(
         status = desc.status.name if getattr(desc, "status", None) else "UNKNOWN"
         pending: dict = {"pending": False}
         result = None
+        execution = await execution_view(
+            handle, desc, [r for r in settings.multi_agent.pipeline if r in KNOWN_ROLES],
+            getattr(c, "data_converter", None),
+        )
         if status == "RUNNING":
             try:
-                pending = await handle.query(OrderWorkflow.pending)
+                child_id = execution.get("child_workflow_id")
+                approval_handle = c.get_workflow_handle(child_id) if child_id else handle
+                pending = await approval_handle.query(ApprovalWorkflow.pending if child_id else OrderWorkflow.pending)
             except Exception:
-                pending = {"pending": False}
+                pending = {"pending": False, "unavailable": True}
         elif status == "COMPLETED":
             try:
                 result = await handle.result()
             except Exception:
                 result = None
-        return {"id": wfid, "status": status, "pending": pending, "result": result}
+        return {"id": wfid, "status": status, "pending": pending, "result": result, **execution}
 
     @app.post("/api/orders/{wfid}/decision")
     async def decide(wfid: str, body: DecisionIn) -> dict:
         c = await client()
         handle = c.get_workflow_handle(wfid)
-        await handle.signal(OrderWorkflow.decide, args=[body.approved, body.approver, body.note])
+        desc = await handle.describe()
+        if desc.status.name != "RUNNING":
+            raise HTTPException(409, "This workflow has already closed. Refresh its status.")
+        execution = await execution_view(handle, desc, [], getattr(c, "data_converter", None))
+        child_id = execution.get("child_workflow_id")
+        target = c.get_workflow_handle(child_id) if child_id else handle
+        pending = await target.query(ApprovalWorkflow.pending if child_id else OrderWorkflow.pending)
+        if not pending.get("pending"):
+            raise HTTPException(409, "This workflow is not waiting for approval. Refresh its status.")
+        await target.signal(ApprovalWorkflow.decide if child_id else OrderWorkflow.decide,
+                            args=[body.approved, body.approver, body.note])
         return {"ok": True}
 
     return app

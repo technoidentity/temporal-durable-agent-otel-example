@@ -25,3 +25,7 @@ venv/
 
 # Runtime (pidfiles, worker logs)
 .run/
+
+# Local browser evidence and Impeccable working files
+.playwright-mcp/
+.impeccable/
