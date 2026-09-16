@@ -28,7 +28,12 @@ def _failure(failure: Any) -> str:
 async def execution_view(handle: Any, desc: Any, roles: list[str], converter=None) -> dict:
     converter = converter or DataConverter.default
     history = await handle.fetch_history()
-    stages = {role: {"role": role, "status": "waiting", "attempt": 0} for role in roles}
+    known = set(roles)
+    # Stages are built progressively: a step appears only once it is actually
+    # scheduled in history, so the UI graph is constructed as the run executes
+    # (the real flow/agents hit) rather than shown up front. ``order`` preserves
+    # the configured pipeline order for a stable left-to-right layout.
+    stages: dict[str, dict] = {}
     scheduled: dict[int, dict] = {}
     timeline = []
     child_id = None
@@ -62,11 +67,17 @@ async def execution_view(handle: Any, desc: Any, roles: list[str], converter=Non
             timeline.append({"id": event.event_id, "at": at, "label": "Workflow started", "kind": "workflow"})
         elif kind == "activity_task_scheduled_event_attributes":
             role = attr.activity_type.name.rsplit(".", 1)[-1]
-            stage = stages.get(role)
-            if stage is None and attr.activity_type.name == "a2a_call_activity":
-                stage = incident = {"role": "servicenow", "status": "waiting", "attempt": 0}
-            if stage is None:
+            if attr.activity_type.name == "a2a_call_activity":
+                role = "servicenow"
+            if role not in known and role != "servicenow":
                 continue
+            stage = stages.get(role)
+            if stage is None:
+                stage = {"role": role, "status": "waiting", "attempt": 0,
+                         "order": len(stages)}
+                stages[role] = stage
+                if role == "servicenow":
+                    incident = stage
             stage.update(status="scheduled", activity_id=attr.activity_id, scheduled_at=at)
             inp = await decode(attr.input)
             if isinstance(inp, dict):

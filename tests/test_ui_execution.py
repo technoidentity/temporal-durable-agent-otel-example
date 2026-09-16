@@ -46,7 +46,9 @@ async def test_projects_real_activity_outputs_and_retry_attempt():
     assert view["stages"][0]["input"] == {"request": "order"}
     assert view["stages"][0]["attempt"] == 2
     assert view["stages"][0]["last_failure"] == "temporary failure"
-    assert view["stages"][1]["status"] == "waiting"
+    # Progressive graph: only steps actually reached are projected; inventory
+    # has not been scheduled yet, so it is not rendered.
+    assert [s["role"] for s in view["stages"]] == ["intake"]
     assert len(view["timeline"]) == 3
 
 
@@ -65,7 +67,7 @@ async def test_pending_attempt_is_reported_without_inventing_history():
 
 
 @pytest.mark.asyncio
-async def test_failed_agent_preserves_cause_and_leaves_later_steps_waiting():
+async def test_failed_agent_preserves_cause_and_leaves_later_steps_unrendered():
     events = [HistoryEvent(event_id=5, activity_task_scheduled_event_attributes=ActivityTaskScheduledEventAttributes(
         activity_id="1", activity_type=ActivityType(name="pepsico-order.intake"))),
         HistoryEvent(event_id=8, activity_task_failed_event_attributes=ActivityTaskFailedEventAttributes(
@@ -73,4 +75,5 @@ async def test_failed_agent_preserves_cause_and_leaves_later_steps_waiting():
     view = await execution_view(HistoryHandle(events), SimpleNamespace(), ["intake", "pricing"])
     assert view["stages"][0]["status"] == "failed"
     assert view["stages"][0]["error"] == "Activity failed: Injected fault"
-    assert view["stages"][1]["status"] == "waiting"
+    # Progressive graph: pricing has not been reached, so it is not rendered yet.
+    assert [s["role"] for s in view["stages"]] == ["intake"]

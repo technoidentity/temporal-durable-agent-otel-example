@@ -107,6 +107,7 @@ let meta,
   selectedRole = "intake",
   activeTab = "workflow";
 let runs = new Map(),
+  userSelected = false,
   polling = false,
   loading = false,
   decisionBusy = false,
@@ -214,10 +215,40 @@ function setError(selector, message) {
   el.hidden = !message;
   el.textContent = message || "";
 }
+let lastGridSig = "";
+// Roles that have actually been reached, in execution order — the graph is
+// constructed as the run progresses rather than shown up front.
+function reachedRoles() {
+  return (current()?.stages || [])
+    .filter((s) => roles[s.role])
+    .slice()
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .map((s) => s.role);
+}
+// The step currently executing (highlighted as the live state).
+function activeRole() {
+  const s = (current()?.stages || []).find((x) =>
+    ["running", "retrying", "scheduled"].includes(x.status),
+  );
+  return s?.role || null;
+}
 function buildMap() {
   const grid = $("#agent-grid");
+  const list = reachedRoles();
+  const sig = list.join(",");
+  if (sig === lastGridSig && grid.childElementCount) return;
+  lastGridSig = sig;
   grid.replaceChildren();
-  pipeline.forEach((role, i) => {
+  if (!list.length) {
+    const ph = document.createElement("p");
+    ph.className = "agent-empty";
+    ph.textContent = current()
+      ? "Waiting for the first agent to start…"
+      : "Start an order — steps appear here as agents run.";
+    grid.append(ph);
+    return;
+  }
+  list.forEach((role, i) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "agent-node";
@@ -230,7 +261,7 @@ function buildMap() {
     button.onclick = () => selectRole(role);
     grid.append(button);
   });
-  new ResizeObserver(drawConnectors).observe(grid);
+  requestAnimationFrame(drawConnectors);
 }
 function drawConnectors() {
   const canvas = $("#flow-canvas");
@@ -254,7 +285,8 @@ function drawConnectors() {
       const x = a.left + a.width / 2 - bounds.left;
       path = `M${x} ${a.bottom - bounds.top}V${b.top - bounds.top - 3}`;
     }
-    const target = stageFor(pipeline[i + 1]);
+    const nextRole = nodes[i + 1]?.dataset.role;
+    const target = nextRole ? stageFor(nextRole) : { status: "" };
     const cls =
       target.status === "completed"
         ? "done"
@@ -284,6 +316,7 @@ function reveal(element) {
 }
 function selectRole(role) {
   selectedRole = role;
+  userSelected = true;
   lastInspector = "";
   renderMap();
   renderInspector();
@@ -309,6 +342,7 @@ function serviceExplanation(run) {
 }
 function selectRun(id) {
   selectedId = id;
+  userSelected = false; // new run: follow the live step again
   lastInspector = "";
   decisionBusy = false;
   $("#decision-note").value = "";
@@ -318,14 +352,20 @@ function selectRun(id) {
   if (innerWidth <= 800) reveal($(".execution-header"));
 }
 function renderMap() {
+  buildMap(); // (re)build the grid from the steps reached so far
+  const live = activeRole();
+  // Auto-follow the current step until the user picks one themselves.
+  if (!userSelected && live) selectedRole = live;
   for (const button of $("#agent-grid").children) {
-    const role = button.dataset.role,
-      s = stageFor(role);
+    const role = button.dataset.role;
+    if (!role) continue; // placeholder
+    const s = stageFor(role);
     button.dataset.state = s.status;
+    button.dataset.current = String(role === live);
     button.setAttribute("aria-pressed", String(selectedRole === role));
     button.setAttribute(
       "aria-label",
-      `${roles[role].title}: ${shortState(s)}. Inspect step`,
+      `${roles[role].title}: ${shortState(s)}${role === live ? " (current step)" : ""}. Inspect step`,
     );
     button.querySelector(".node-state span").textContent = shortState(s);
   }
@@ -836,6 +876,7 @@ async function init() {
     $("#run").disabled = true;
   }
   buildMap();
+  new ResizeObserver(drawConnectors).observe($("#agent-grid"));
   updateControls();
   render();
   await poll();

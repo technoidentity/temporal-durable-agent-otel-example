@@ -1657,3 +1657,40 @@ main {
     scroll-margin-top: 20px;
   }
 }
+
+/* Progressive workflow graph: steps appear as they run; current step highlighted */
+.agent-empty {
+  grid-column: 1 / -1;
+  align-self: center;
+  justify-self: center;
+  max-width: 320px;
+  text-align: center;
+  color: #6b7a90;
+  font-size: 14px;
+  padding: 26px 16px;
+  border: 1px dashed #d5dee8;
+  border-radius: 10px;
+  background: #fbfdff;
+}
+.agent-node {
+  animation: node-appear 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes node-appear {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.agent-node[data-current="true"] {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px var(--blue-soft), inset 0 0 0 1px var(--blue);
+  animation:
+    node-appear 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    node-pulse 1.8s ease-in-out infinite;
+}
+@keyframes node-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--blue-soft), inset 0 0 0 1px var(--blue); }
+  50% { box-shadow: 0 0 0 5px var(--blue-soft), inset 0 0 0 1px var(--blue); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-node,
+  .agent-node[data-current="true"] { animation: none; }
+}
