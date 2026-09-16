@@ -74,6 +74,7 @@
                   <option value="approval" selected>Discount exception</option>
                   <option value="recovery">Retry & recover</option>
                   <option value="risk">Fulfillment risk</option>
+                  <option value="a2a">Agent-to-agent handoff</option>
                 </select>
                 <label for="request">Distributor request</label>
                 <textarea
@@ -224,6 +225,11 @@ Star Distributors: 500 cases of Pepsi 330ml at 20% discount</textarea>
             </section>
           </aside>
           <section class="execution surface" aria-labelledby="execution-title">
+            <div id="explorer-empty" class="explorer-empty" hidden>
+              <span class="explorer-empty-mark" data-icon="workflow"></span>
+              <h2>Workflow explorer</h2>
+              <p>Start an order on the left to watch the agent team work in real time — each step appears as it runs.</p>
+            </div>
             <header class="execution-header" tabindex="-1">
               <div class="execution-title-row">
                 <h2 id="execution-title">Workflow explorer</h2>

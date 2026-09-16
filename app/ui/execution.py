@@ -64,7 +64,7 @@ async def execution_view(handle: Any, desc: Any, roles: list[str], converter=Non
             if isinstance(inp, dict):
                 request = inp.get("request", "")
                 options = {k: inp.get(k) for k in ("hitl_enabled", "hitl_mode", "discount_threshold", "chaos")}
-            timeline.append({"id": event.event_id, "at": at, "label": "Workflow started", "kind": "workflow"})
+            timeline.append({"id": event.event_id, "at": at, "label": "Order received", "kind": "workflow"})
         elif kind == "activity_task_scheduled_event_attributes":
             role = attr.activity_type.name.rsplit(".", 1)[-1]
             if attr.activity_type.name == "a2a_call_activity":
@@ -94,7 +94,7 @@ async def execution_view(handle: Any, desc: Any, roles: list[str], converter=Non
                 if attr.HasField("last_failure"):
                     stage["last_failure"] = _failure(attr.last_failure)
                 timeline.append({"id": event.event_id, "at": at, "role": role,
-                                 "label": f"{role.title()} started", "kind": "agent", "attempt": attr.attempt})
+                                 "label": f"{role.title()} agent working", "kind": "agent", "attempt": attr.attempt})
             elif kind == "activity_task_completed_event_attributes":
                 decoded = await decode(attr.result)
                 output = decoded.get("result", decoded) if isinstance(decoded, dict) else decoded
@@ -102,19 +102,19 @@ async def execution_view(handle: Any, desc: Any, roles: list[str], converter=Non
                     output = output.get("outcome" if role == "supervisor" else role, output)
                 stage.update(status="completed", completed_at=at, output=output)
                 timeline.append({"id": event.event_id, "at": at, "role": role,
-                                 "label": f"{role.title()} completed", "kind": "completed"})
+                                 "label": f"{role.title()} agent done", "kind": "completed"})
             elif kind in ("activity_task_failed_event_attributes", "activity_task_timed_out_event_attributes",
                           "activity_task_canceled_event_attributes"):
                 message = _failure(attr.failure) if hasattr(attr, "failure") else "Activity canceled"
                 stage.update(status="failed", completed_at=at, error=message)
                 timeline.append({"id": event.event_id, "at": at, "role": role,
-                                 "label": f"{role.title()} failed", "kind": "failed"})
+                                 "label": f"{role.title()} agent failed", "kind": "failed"})
         elif kind == "child_workflow_execution_started_event_attributes":
             if attr.workflow_type.name == "ApprovalWorkflow":
                 child_id = attr.workflow_execution.workflow_id
-                timeline.append({"id": event.event_id, "at": at, "label": "Approval child workflow started", "kind": "approval"})
+                timeline.append({"id": event.event_id, "at": at, "label": "Escalated for approval", "kind": "approval"})
         elif kind == "workflow_execution_signaled_event_attributes" and attr.signal_name == "decide":
-            timeline.append({"id": event.event_id, "at": at, "label": "Human decision received", "kind": "approval"})
+            timeline.append({"id": event.event_id, "at": at, "label": "Decision recorded", "kind": "approval"})
         elif kind in ("workflow_execution_completed_event_attributes", "workflow_execution_failed_event_attributes",
                       "workflow_execution_timed_out_event_attributes", "workflow_execution_terminated_event_attributes",
                       "workflow_execution_canceled_event_attributes"):
@@ -122,7 +122,7 @@ async def execution_view(handle: Any, desc: Any, roles: list[str], converter=Non
             if hasattr(attr, "failure"):
                 error = _failure(attr.failure)
             timeline.append({"id": event.event_id, "at": at,
-                             "label": f"Workflow {desc.status.name.lower().replace('_', ' ')}", "kind": "workflow"})
+                             "label": f"Order {desc.status.name.lower().replace('_', ' ')}", "kind": "workflow"})
 
     raw = getattr(desc, "raw_description", None)
     if raw is not None:

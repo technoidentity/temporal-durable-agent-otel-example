@@ -34,6 +34,48 @@ function esc(value) {
 function text(value) {
   return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
+// Render light markdown (headings, bold, bullets) from agent output into clean
+// HTML so the inspector/result never show raw ### or * or - characters.
+function md(value) {
+  const src = text(value);
+  if (!src) return "";
+  const inline = (t) =>
+    t
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*(?!\s)(.+?)\*/g, "$1<em>$2</em>")
+      .replace(/`(.+?)`/g, "<code>$1</code>");
+  let html = "",
+    inList = false;
+  const closeList = () => {
+    if (inList) {
+      html += "</ul>";
+      inList = false;
+    }
+  };
+  for (const raw of esc(src).split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) {
+      closeList();
+      continue;
+    }
+    let m;
+    if ((m = line.match(/^#{1,6}\s+(.*)$/))) {
+      closeList();
+      html += `<div class="md-h">${inline(m[1])}</div>`;
+    } else if ((m = line.match(/^(?:[-*]|\d+\.)\s+(.*)$/))) {
+      if (!inList) {
+        html += "<ul>";
+        inList = true;
+      }
+      html += `<li>${inline(m[1])}</li>`;
+    } else {
+      closeList();
+      html += `<p>${inline(line)}</p>`;
+    }
+  }
+  closeList();
+  return html;
+}
 const roles = {
   intake: {
     title: "Order intake",
@@ -99,6 +141,28 @@ const scenarios = {
       "URGENT rush: 8000 cases in 24h, stock may be insufficient, 10% discount",
     help: "A rush order. When enabled, ServiceNow receives an incident if fulfillment flags a risk.",
     mode: "none",
+  },
+  a2a: {
+    request:
+      "URGENT rush: 12000 cases in 24h across 3 DCs, stock likely insufficient, 10% discount",
+    help: "Agent-to-agent handoff: the fulfillment agent calls the ServiceNow agent over A2A to open an incident.",
+    mode: "none",
+  },
+};
+// What each step actually does — shown as a chip on the node and in the inspector.
+const KIND = {
+  intake: { label: "LLM", tip: "Reasoning via the Lyzr model router." },
+  inventory: { label: "LLM", tip: "Reasoning via the Lyzr model router." },
+  pricing: { label: "LLM", tip: "Reasoning via the Lyzr model router." },
+  fulfillment: {
+    label: "LLM · A2A",
+    tip: "Reasons via Lyzr; on fulfillment risk it calls the ServiceNow agent over A2A.",
+  },
+  account: { label: "LLM", tip: "Reasoning via the Lyzr model router." },
+  supervisor: { label: "LLM", tip: "Reasoning via the Lyzr model router." },
+  servicenow: {
+    label: "A2A · API",
+    tip: "Agent-to-agent call to the ServiceNow agent, which opens an incident.",
   },
 };
 let meta,
@@ -240,11 +304,11 @@ function buildMap() {
   lastGridSig = sig;
   grid.replaceChildren();
   if (!list.length) {
-    const ph = document.createElement("p");
+    const ph = document.createElement("div");
     ph.className = "agent-empty";
-    ph.textContent = current()
-      ? "Waiting for the first agent to start…"
-      : "Start an order — steps appear here as agents run.";
+    ph.innerHTML = current()
+      ? `<span class="boot-spinner" aria-hidden="true"></span><strong>Assembling the agent team…</strong><span class="boot-sub">Bringing the agents online and orchestrating the workflow. Each step appears here as it runs.</span>`
+      : `<span>Start an order — steps appear here as agents run.</span>`;
     grid.append(ph);
     return;
   }
@@ -257,7 +321,7 @@ function buildMap() {
       column = row % 2 ? 3 - (i % 3) : (i % 3) + 1;
     button.style.gridColumn = column;
     button.style.gridRow = row + 1;
-    button.innerHTML = `<span class="node-top"><span class="node-icon">${icon(role)}</span><span class="node-number">${String(i + 1).padStart(2, "0")}</span></span><span class="node-title">${esc(roles[role].title)}</span><span class="node-state"><i></i><span>Waiting</span></span>`;
+    button.innerHTML = `<span class="node-top"><span class="node-icon">${icon(role)}</span><span class="node-number">${String(i + 1).padStart(2, "0")}</span></span><span class="node-title">${esc(roles[role].title)}</span><span class="node-kind">${esc(KIND[role]?.label || "LLM")}</span><span class="node-state"><i></i><span>Waiting</span></span>`;
     button.onclick = () => selectRole(role);
     grid.append(button);
   });
@@ -466,7 +530,7 @@ function renderInspector() {
           : ["running", "scheduled"].includes(s.status)
             ? "running"
             : "neutral";
-  el.innerHTML = `<div class="inspector-title">${icon(selectedRole)}<h3>${esc(definition.title)}</h3></div><p class="inspector-description">${esc(definition.description)}</p><div class="inspector-meta"><span class="status ${key}">${esc(shortState(s))}</span>${s.attempt ? `<span>Attempt ${s.attempt}</span>` : ""}${s.completed_at ? `<span>${esc(duration(s.started_at, s.completed_at))}</span>` : ""}</div><div class="inspector-section"><h4>Receives</h4>${inputs ? `<p>${esc(inputs)}</p>` : `<p>${esc(definition.input.map((k) => (k === "request" ? "Distributor request" : `${roles[k]?.short || k} output`)).join(" + "))}</p>`}</div><div class="inspector-section"><h4>${output != null ? "Agent output" : "Produces"}</h4><p>${esc(output != null ? text(output) : r ? (s.status === "failed" ? "This step failed before producing an output." : "Output will appear here when this agent completes.") : "Start an order to see the actual response.")}</p>${meta?.provider === "fake" && output != null ? '<p class="demo-output-note">Demo model: this response echoes input; it is not a verified business recommendation.</p>' : ""}</div>${s.error || s.last_failure ? `<div class="inspector-section"><h4>${s.error ? "Failure" : "Previous attempt"}</h4><p>${esc(s.error || s.last_failure)}</p></div>` : ""}<div class="handoff">${icon("arrow")}<span>Hands off to ${esc(next ? roles[next].short : "approval gate")}</span></div>${s.input ? `<div class="inspector-section"><details><summary>Technical details</summary><pre class="raw">${esc(JSON.stringify({ activity_id: s.activity_id, attempt: s.attempt, started_at: s.started_at, completed_at: s.completed_at, input: s.input }, null, 2))}</pre></details></div>` : ""}`;
+  el.innerHTML = `<div class="inspector-title">${icon(selectedRole)}<h3>${esc(definition.title)}</h3></div><p class="inspector-description">${esc(definition.description)}</p><div class="inspector-meta"><span class="status ${key}">${esc(shortState(s))}</span>${s.attempt ? `<span>Attempt ${s.attempt}</span>` : ""}${s.completed_at ? `<span>${esc(duration(s.started_at, s.completed_at))}</span>` : ""}</div><div class="inspector-section"><h4>Mechanism</h4><p><span class="kind-chip">${esc(KIND[selectedRole]?.label || "LLM")}</span> ${esc(KIND[selectedRole]?.tip || "Reasoning via the Lyzr model router.")}</p></div><div class="inspector-section"><h4>Receives</h4>${inputs ? `<p>${esc(inputs)}</p>` : `<p>${esc(definition.input.map((k) => (k === "request" ? "Distributor request" : `${roles[k]?.short || k} output`)).join(" + "))}</p>`}</div><div class="inspector-section"><h4>${output != null ? "Agent output" : "Produces"}</h4>${output != null ? `<div class="md">${md(output)}</div>` : `<p>${esc(r ? (s.status === "failed" ? "This step failed before producing an output." : "Output will appear here when this agent completes.") : "Start an order to see the actual response.")}</p>`}${meta?.provider === "fake" && output != null ? '<p class="demo-output-note">Demo model: this response echoes input; it is not a verified business recommendation.</p>' : ""}</div>${s.error || s.last_failure ? `<div class="inspector-section"><h4>${s.error ? "Failure" : "Previous attempt"}</h4><p>${esc(s.error || s.last_failure)}</p></div>` : ""}<div class="handoff">${icon("arrow")}<span>Hands off to ${esc(next ? roles[next].short : "approval gate")}</span></div>${s.input ? `<div class="inspector-section"><details><summary>Technical details</summary><pre class="raw">${esc(JSON.stringify({ activity_id: s.activity_id, attempt: s.attempt, started_at: s.started_at, completed_at: s.completed_at, input: s.input }, null, 2))}</pre></details></div>` : ""}`;
   el.getAnimations().forEach((a) => a.cancel());
   el.animate(
     [{ transform: "translateY(4px)" }, { transform: "translateY(0)" }],
@@ -565,11 +629,11 @@ function renderResult() {
     html =
       '<h3>Workflow completed</h3><p class="muted">The result is unavailable. Open Temporal to inspect the recorded output.</p>';
   else
-    html = `<h3>${result.approval?.approved === false ? "Order rejected" : "Order workflow completed"}</h3><p class="muted">${result.approval?.approved === false ? "The human decision rejected this order. The agent recommendation is preserved below." : result.approval?.required ? "Approval recorded. The workflow reached its final outcome." : "No human approval was required."}</p>${meta.provider === "fake" ? '<p class="muted">Demo model output is an echo of the supplied context.</p>' : ""}<div class="result-summary">${esc(result.outcome || "No supervisor output was produced by this pipeline.")}</div>${result.incident ? `<div class="inspector-section"><h4>ServiceNow handoff</h4><p>${esc(result.incident)}</p></div>` : ""}<div class="result-outputs">${pipeline
+    html = `<h3>${result.approval?.approved === false ? "Order rejected" : "Order workflow completed"}</h3><p class="muted">${result.approval?.approved === false ? "The human decision rejected this order. The agent recommendation is preserved below." : result.approval?.required ? "Approval recorded. The workflow reached its final outcome." : "No human approval was required."}</p>${meta.provider === "fake" ? '<p class="muted">Demo model output is an echo of the supplied context.</p>' : ""}<div class="result-summary md">${result.outcome ? md(result.outcome) : "<p>No supervisor output was produced by this pipeline.</p>"}</div>${result.incident ? `<div class="inspector-section"><h4>ServiceNow handoff</h4><p>${esc(result.incident)}</p></div>` : ""}<div class="result-outputs">${pipeline
       .map((role) => {
         const output = result[role === "supervisor" ? "outcome" : role];
         return output
-          ? `<details><summary>${esc(roles[role].title)} output</summary><p>${esc(text(output))}</p></details>`
+          ? `<details><summary>${esc(roles[role].title)} output</summary><div class="md">${md(output)}</div></details>`
           : "";
       })
       .join(
@@ -580,6 +644,10 @@ function renderResult() {
 function render() {
   const r = current(),
     state = stateOf(r);
+  // Before any order runs, hide the workflow explorer and show a prompt.
+  const exec = document.querySelector(".execution");
+  if (exec) exec.classList.toggle("is-empty", !r);
+  $("#explorer-empty").hidden = !!r;
   $("#run-status").className = `status ${state.key}`;
   $("#run-status").textContent = state.label;
   $("#run-request").textContent =
