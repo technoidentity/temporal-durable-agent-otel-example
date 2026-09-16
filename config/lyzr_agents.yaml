@@ -1,0 +1,9 @@
+base_url: https://agent-prod.studio.lyzr.ai
+model: gpt-4o-mini
+agents:
+  pepsico-intake: 6aaa655e8cb5409189036064
+  pepsico-inventory: 6aaa655f23a0b18c6c42a39a
+  pepsico-pricing: 6aaa655f9b0f23536cc110c4
+  pepsico-fulfillment: 6aaa6560e4aa808c958cd9c1
+  pepsico-account: 6aaa6560a03a6a19172b9e6a
+  pepsico-supervisor: 6aaa65618a8e9003d80397e8
