@@ -53,6 +53,13 @@ hitl:                          # human-in-the-loop approval gate (all overridabl
   approval_timeout_seconds: 86400
   on_timeout: reject           # reject | approve
 
+a2a:                           # agent-to-agent connectivity (remote A2A agents)
+  enabled: false
+  agents:
+    # servicenow: http://localhost:8801
+    # peer: http://localhost:8802
+  call_timeout_seconds: 30
+
 llm:
   provider: openai             # openai | lyzr | ollama | fake
   model: gpt-4o-mini

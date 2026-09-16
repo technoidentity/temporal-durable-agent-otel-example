@@ -56,6 +56,15 @@ async def run_worker(settings: AppSettings) -> None:
     if not graphs:
         raise ValueError("no graphs enabled: enable langgraph and/or multi_agent")
 
+    activities: list = []
+    if settings.a2a.enabled:
+        from app.temporal.a2a_activity import a2a_call_activity
+        from app.workflows.a2a_workflow import A2AWorkflow
+
+        workflows.append(A2AWorkflow)
+        activities.append(a2a_call_activity)
+        log.info("a2a.enabled", agents=list(settings.a2a.agents))
+
     plugin = LangGraphPlugin(
         graphs=graphs,
         default_activity_options=build_activity_options(settings.temporal.activity),
@@ -74,6 +83,7 @@ async def run_worker(settings: AppSettings) -> None:
         client,
         task_queue=settings.temporal.task_queue,
         workflows=workflows,
+        activities=activities,
         plugins=[plugin],
     )
 

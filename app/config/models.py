@@ -193,6 +193,18 @@ class HITLConfig(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# agent-to-agent (A2A)
+# --------------------------------------------------------------------------- #
+class A2AConfig(BaseModel):
+    """Agent-to-agent connectivity. ``agents`` maps a logical name to the base
+    URL of a remote A2A agent (each exposes an agent card + task endpoint)."""
+
+    enabled: bool = False
+    agents: dict[str, str] = Field(default_factory=dict)
+    call_timeout_seconds: int = 30
+
+
+# --------------------------------------------------------------------------- #
 # llm
 # --------------------------------------------------------------------------- #
 class LLMConfig(BaseModel):
@@ -304,6 +316,7 @@ class AppSettings(BaseModel):
     langgraph: LangGraphConfig = Field(default_factory=LangGraphConfig)
     multi_agent: MultiAgentConfig = Field(default_factory=MultiAgentConfig)
     hitl: HITLConfig = Field(default_factory=HITLConfig)
+    a2a: A2AConfig = Field(default_factory=A2AConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     infrastructure: InfrastructureConfig = Field(default_factory=InfrastructureConfig)
