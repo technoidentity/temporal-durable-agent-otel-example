@@ -29,6 +29,18 @@ class TemporalMode(str, Enum):
     cloud = "cloud"
 
 
+class HITLMode(str, Enum):
+    # Gate handled inside the order workflow (signal/query/timer on the workflow).
+    inline = "inline"
+    # Gate delegated to a dedicated, reusable ApprovalWorkflow (child workflow).
+    child = "child"
+
+
+class OnTimeout(str, Enum):
+    reject = "reject"
+    approve = "approve"
+
+
 class OtelProtocol(str, Enum):
     grpc = "grpc"
     http = "http"
@@ -165,6 +177,22 @@ class MultiAgentConfig(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# human-in-the-loop
+# --------------------------------------------------------------------------- #
+class HITLConfig(BaseModel):
+    """Human-in-the-loop approval gate. All values are overridable per run so
+    the demo UI can change them live."""
+
+    enabled: bool = True
+    mode: HITLMode = HITLMode.inline
+    # A requested discount strictly greater than this (percent) needs approval.
+    discount_threshold: float = 15.0
+    # How long the workflow waits durably for a human decision.
+    approval_timeout_seconds: int = 86400
+    on_timeout: OnTimeout = OnTimeout.reject
+
+
+# --------------------------------------------------------------------------- #
 # llm
 # --------------------------------------------------------------------------- #
 class LLMConfig(BaseModel):
@@ -275,6 +303,7 @@ class AppSettings(BaseModel):
     temporal: TemporalConfig = Field(default_factory=TemporalConfig)
     langgraph: LangGraphConfig = Field(default_factory=LangGraphConfig)
     multi_agent: MultiAgentConfig = Field(default_factory=MultiAgentConfig)
+    hitl: HITLConfig = Field(default_factory=HITLConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     infrastructure: InfrastructureConfig = Field(default_factory=InfrastructureConfig)

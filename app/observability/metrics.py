@@ -40,6 +40,9 @@ class AgentMetrics:
         self._workflow_failures = meter.create_counter(
             "agent.workflow.failures", unit="1", description="Agent workflow failures"
         )
+        self._approvals = meter.create_counter(
+            "agent.hitl.decisions", unit="1", description="HITL approval decisions"
+        )
 
     # --- LLM ---------------------------------------------------------------- #
     @contextmanager
@@ -82,6 +85,12 @@ class AgentMetrics:
 
     def workflow_failed(self) -> None:
         self._workflow_failures.add(1)
+
+    def approval_decided(self, approved: bool, via: str) -> None:
+        # Low-cardinality labels: decision + how it was reached.
+        self._approvals.add(
+            1, {"decision": "approved" if approved else "rejected", "via": via}
+        )
 
 
 _metrics: AgentMetrics | None = None

@@ -1,7 +1,10 @@
-"""Start the multi-agent order workflow.
+"""Start the multi-agent order workflow (with the HITL approval gate).
 
     python -m app.entrypoints.order --request "500 cases of Pepsi 330ml, 20% off"
-    python -m app.entrypoints.order --request "..." --workflow-id my-id
+    python -m app.entrypoints.order -r "..." --threshold 10 --timeout 120 --mode inline
+
+If the requested discount exceeds the threshold the workflow pauses for a human
+decision; approve/reject with `python -m app.entrypoints.approve`.
 """
 
 from __future__ import annotations
@@ -11,6 +14,7 @@ import uuid
 from datetime import timedelta
 
 import click
+from temporalio.client import WorkflowExecutionStatus
 
 from app.config import load_settings
 from app.config.models import AppSettings
@@ -19,47 +23,95 @@ from app.temporal.client import create_temporal_client
 from app.workflows.order_workflow import OrderWorkflow, OrderWorkflowInput
 
 
-async def execute(settings: AppSettings, request: str, workflow_id: str | None) -> dict:
+async def execute(settings: AppSettings, request: str, workflow_id: str | None, overrides: dict) -> dict:
     graph_name = settings.multi_agent.graph_name
     workflow_id = workflow_id or f"{graph_name}-{uuid.uuid4().hex[:12]}"
+    hitl = settings.hitl
+
+    inp = OrderWorkflowInput(
+        request=request,
+        graph_name=graph_name,
+        hitl_enabled=overrides.get("hitl_enabled", hitl.enabled),
+        hitl_mode=overrides.get("mode", hitl.mode.value),
+        discount_threshold=overrides.get("threshold", hitl.discount_threshold),
+        approval_timeout_seconds=overrides.get("timeout", hitl.approval_timeout_seconds),
+        on_timeout=overrides.get("on_timeout", hitl.on_timeout.value),
+    )
+
     telemetry = init_telemetry(settings)
     metrics = get_agent_metrics()
     interceptors = build_temporal_interceptors(settings)
     client = await create_temporal_client(settings, interceptors=interceptors)
 
-    print(f"Workflow ID: {workflow_id}")
     metrics.workflow_requested()
+    handle = await client.start_workflow(
+        OrderWorkflow.run,
+        inp,
+        id=workflow_id,
+        task_queue=settings.temporal.task_queue,
+        execution_timeout=timedelta(
+            seconds=settings.temporal.workflow.execution_timeout_seconds
+        ),
+    )
+    print(f"Workflow ID: {workflow_id}")
+
+    # Surface a pending approval (if the gate trips) so the operator knows how to act.
+    for _ in range(30):
+        try:
+            pend = await handle.query(OrderWorkflow.pending)
+        except Exception:
+            pend = {"pending": False}
+        if pend.get("pending"):
+            print(f"\n[APPROVAL REQUIRED] {pend.get('details')}")
+            print("Approve:  python -m app.entrypoints.approve --workflow-id "
+                  f"{workflow_id} --approve")
+            print("Reject :  python -m app.entrypoints.approve --workflow-id "
+                  f"{workflow_id} --reject\n")
+            break
+        desc = await handle.describe()
+        if desc.status != WorkflowExecutionStatus.RUNNING:
+            break
+        await asyncio.sleep(0.5)
+
     try:
-        result = await client.execute_workflow(
-            OrderWorkflow.run,
-            OrderWorkflowInput(request=request, graph_name=graph_name),
-            id=workflow_id,
-            task_queue=settings.temporal.task_queue,
-            execution_timeout=timedelta(
-                seconds=settings.temporal.workflow.execution_timeout_seconds
-            ),
-        )
+        result = await handle.result()
     except Exception:
         metrics.workflow_failed()
-        raise
-    finally:
         telemetry.shutdown()
+        raise
 
-    stage_order = ["intake", "inventory", "pricing", "fulfillment", "account", "outcome"]
-    for stage in stage_order:
+    ap = result.get("approval", {})
+    metrics.approval_decided(bool(ap.get("approved")), str(ap.get("via", "auto")))
+    telemetry.shutdown()
+
+    for stage in ["intake", "inventory", "pricing", "fulfillment", "account", "outcome"]:
         if result.get(stage):
             print(f"\n=== {stage} ===\n{result[stage]}")
+    print(f"\n=== approval ===\n{ap}")
     return result
 
 
 @click.command()
 @click.option("--request", "-r", "request", required=True, help="Distributor order request.")
 @click.option("--workflow-id", "workflow_id", default=None, help="Optional workflow id.")
-def main(request: str, workflow_id: str | None) -> None:
+@click.option("--threshold", type=float, default=None, help="Discount %% approval threshold.")
+@click.option("--timeout", type=int, default=None, help="Approval wait timeout (seconds).")
+@click.option("--mode", type=click.Choice(["inline", "child"]), default=None, help="HITL mode.")
+@click.option("--no-hitl", is_flag=True, help="Disable the approval gate for this run.")
+def main(request, workflow_id, threshold, timeout, mode, no_hitl) -> None:
     settings = load_settings()
     if not settings.multi_agent.enabled:
         raise SystemExit("multi_agent.enabled is false; enable it in config to run orders")
-    asyncio.run(execute(settings, request, workflow_id))
+    overrides: dict = {}
+    if threshold is not None:
+        overrides["threshold"] = threshold
+    if timeout is not None:
+        overrides["timeout"] = timeout
+    if mode is not None:
+        overrides["mode"] = mode
+    if no_hitl:
+        overrides["hitl_enabled"] = False
+    asyncio.run(execute(settings, request, workflow_id, overrides))
 
 
 if __name__ == "__main__":

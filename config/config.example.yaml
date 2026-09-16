@@ -46,6 +46,13 @@ multi_agent:
   lyzr_agents_file: config/lyzr_agents.yaml
   name_prefix: "pepsico-"
 
+hitl:                          # human-in-the-loop approval gate (all overridable per run)
+  enabled: true
+  mode: inline                 # inline | child (dedicated ApprovalWorkflow)
+  discount_threshold: 15.0     # requested discount % above this needs approval
+  approval_timeout_seconds: 86400
+  on_timeout: reject           # reject | approve
+
 llm:
   provider: openai             # openai | lyzr | ollama | fake
   model: gpt-4o-mini

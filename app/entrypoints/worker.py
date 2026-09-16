@@ -29,6 +29,7 @@ from app.temporal.client import create_temporal_client
 from app.temporal.retry import build_activity_options
 from app.temporal.runtime import create_runtime
 from app.workflows.agent_workflow import AgentWorkflow
+from app.workflows.approval_workflow import ApprovalWorkflow
 from app.workflows.order_workflow import OrderWorkflow
 
 
@@ -50,7 +51,7 @@ async def run_worker(settings: AppSettings) -> None:
         workflows.append(AgentWorkflow)
     if settings.multi_agent.enabled:
         graphs[settings.multi_agent.graph_name] = build_order_graph(settings)
-        workflows.append(OrderWorkflow)
+        workflows.extend([OrderWorkflow, ApprovalWorkflow])
         log.info("multi_agent.enabled", graph=settings.multi_agent.graph_name)
     if not graphs:
         raise ValueError("no graphs enabled: enable langgraph and/or multi_agent")
