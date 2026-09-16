@@ -33,3 +33,21 @@ def test_cloud_metrics_ok_with_key():
 def test_worker_metrics_inactive_when_metrics_off():
     obs = ObservabilityConfig(metrics={"enabled": False})
     assert obs.worker_metrics_active is False
+
+
+def test_phoenix_config_defaults():
+    obs = ObservabilityConfig()
+    assert obs.phoenix.enabled is False
+    assert obs.phoenix.endpoint.endswith(":6006")
+    assert obs.instrument_llm is False
+
+
+def test_init_telemetry_disabled_is_noop():
+    from app.config.models import AppSettings
+    from app.observability.telemetry import init_telemetry
+
+    settings = AppSettings.model_validate({"observability": {"enabled": False}})
+    handle = init_telemetry(settings)
+    assert handle.tracer_provider is None
+    assert handle.meter_provider is None
+    handle.shutdown()  # must not raise

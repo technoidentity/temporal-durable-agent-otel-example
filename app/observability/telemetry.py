@@ -75,6 +75,20 @@ class TelemetryHandle:
             self.meter_provider.shutdown()
 
 
+def _instrument_llm(tracer_provider: TracerProvider) -> None:
+    """Add OpenInference LangChain instrumentation (rich LLM spans for Phoenix).
+
+    Best-effort: if the optional package is missing we skip it rather than fail,
+    keeping observability strictly optional.
+    """
+    try:
+        from openinference.instrumentation.langchain import LangChainInstrumentor
+
+        LangChainInstrumentor().instrument(tracer_provider=tracer_provider)
+    except Exception:  # pragma: no cover - optional dependency / best effort
+        pass
+
+
 def init_telemetry(settings: AppSettings) -> TelemetryHandle:
     """Install global OTel providers according to config. Idempotent per process.
 
@@ -89,6 +103,19 @@ def init_telemetry(settings: AppSettings) -> TelemetryHandle:
         tracer_provider = TracerProvider(resource=resource)
         tracer_provider.add_span_processor(BatchSpanProcessor(_span_exporter(settings)))
         otel_trace.set_tracer_provider(tracer_provider)
+        # Optional app-direct span export to Phoenix (when Phoenix runs outside
+        # Docker and the collector cannot reach it). The collector path is used
+        # otherwise (observability.phoenix.transport=collector).
+        if obs.phoenix.enabled and obs.phoenix.transport == "app":
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+                OTLPSpanExporter as HTTPSpanExporter,
+            )
+
+            tracer_provider.add_span_processor(
+                BatchSpanProcessor(HTTPSpanExporter(endpoint=obs.phoenix.otlp_endpoint))
+            )
+        if obs.instrument_llm:
+            _instrument_llm(tracer_provider)
 
     meter_provider: MeterProvider | None = None
     if obs.metrics_active:

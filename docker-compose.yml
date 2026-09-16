@@ -72,6 +72,16 @@ services:
       - "8889:8889"
       - "13133:13133"
 
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    environment:
+      PHOENIX_WORKING_DIR: /data
+    volumes:
+      - phoenix-data:/data
+    ports:
+      - "6006:6006"   # Phoenix UI (also OTLP HTTP)
+      - "4319:4317"   # Phoenix OTLP gRPC (host 4319 avoids the collector's 4317)
+
   prometheus:
     image: prom/prometheus:v3.1.0
     depends_on:
@@ -121,3 +131,4 @@ volumes:
   postgresql-data:
   prometheus-data:
   grafana-data:
+  phoenix-data:

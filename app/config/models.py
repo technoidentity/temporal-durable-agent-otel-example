@@ -318,10 +318,28 @@ class TemporalCloudMetricsConfig(BaseModel):
         return self
 
 
+class PhoenixConfig(BaseModel):
+    """Arize Phoenix (self-hosted) for LLM/agent trace analysis.
+
+    Two transports are supported:
+    * ``collector`` (ideal): the OTel Collector forwards traces to the Phoenix
+      service (full container stack).
+    * ``app``: the application exports spans directly to ``otlp_endpoint`` — used
+      when Phoenix runs outside Docker (e.g. the pip package on the host).
+    """
+
+    enabled: bool = False
+    transport: str = "collector"  # collector | app
+    endpoint: str = "http://localhost:6006"  # Phoenix UI (for links)
+    otlp_endpoint: str = "http://localhost:6006/v1/traces"  # app-direct OTLP HTTP
+
+
 class ObservabilityConfig(BaseModel):
     enabled: bool = True
     service_name: str = "temporal-langgraph-worker"
     otel: OtelConfig = Field(default_factory=OtelConfig)
+    phoenix: PhoenixConfig = Field(default_factory=PhoenixConfig)
+    instrument_llm: bool = False
     metrics: SignalToggle = Field(default_factory=SignalToggle)
     traces: SignalToggle = Field(default_factory=SignalToggle)
     logs: SignalToggle = Field(default_factory=SignalToggle)

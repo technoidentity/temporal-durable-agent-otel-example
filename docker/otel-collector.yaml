@@ -55,6 +55,13 @@ exporters:
   # and adding it to the traces pipeline exporters.
   debug:
     verbosity: normal
+  # Arize Phoenix (self-hosted). Used by the full container stack where Phoenix
+  # runs as a service; the app can instead export to Phoenix directly (see
+  # observability.phoenix.transport=app) when Phoenix runs outside Docker.
+  otlp/phoenix:
+    endpoint: phoenix:4317
+    tls:
+      insecure: true
   # otlp/tempo:
   #   endpoint: tempo:4317
   #   tls:
@@ -73,6 +80,9 @@ service:
       processors: [memory_limiter, resource, batch]
       exporters: [prometheus]
     traces:
+      # In the full container stack, otlp/phoenix forwards traces to the Phoenix
+      # service. When running Phoenix outside Docker, drop otlp/phoenix here and
+      # set observability.phoenix.transport=app so the app exports to Phoenix.
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [debug]
+      exporters: [debug, otlp/phoenix]

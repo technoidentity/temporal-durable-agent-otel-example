@@ -55,9 +55,7 @@ hitl:                          # human-in-the-loop approval gate (all overridabl
 
 a2a:                           # agent-to-agent connectivity (remote A2A agents)
   enabled: false
-  agents:
-    # servicenow: http://localhost:8801
-    # peer: http://localhost:8802
+  agents: {}                   # e.g. {servicenow: "http://localhost:8801", peer: "http://localhost:8802"}
   call_timeout_seconds: 30
 
 third_party:
@@ -98,6 +96,13 @@ observability:
     enabled: true
     endpoint: http://localhost:4317
     protocol: grpc             # grpc | http
+
+  phoenix:                     # Arize Phoenix (LLM/agent traces)
+    enabled: false
+    transport: collector       # collector (via OTel Collector) | app (direct OTLP)
+    endpoint: http://localhost:6006
+    otlp_endpoint: http://localhost:6006/v1/traces   # used when transport=app
+  instrument_llm: false        # add OpenInference LangChain spans (prompts/tokens)
 
   metrics:
     enabled: true
