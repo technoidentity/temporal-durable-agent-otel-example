@@ -77,6 +77,19 @@ class A2AClient:
             r = await c.post(base_url.rstrip("/") + MESSAGE_PATH, json=payload)
             r.raise_for_status()
             data = r.json()
+        return self._result(data)
+
+    def send_sync(self, base_url: str, message: str, context_id: str | None = None) -> A2AResult:
+        """Synchronous A2A call — for use inside a (sync) agent node/activity."""
+        payload = {"message": message, "context_id": context_id or uuid.uuid4().hex}
+        with httpx.Client(timeout=self._timeout, transport=self._transport) as c:  # type: ignore[arg-type]
+            r = c.post(base_url.rstrip("/") + MESSAGE_PATH, json=payload)
+            r.raise_for_status()
+            data = r.json()
+        return self._result(data)
+
+    @staticmethod
+    def _result(data: dict) -> A2AResult:
         return A2AResult(
             task_id=str(data.get("task_id", "")),
             status=str(data.get("status", "")),

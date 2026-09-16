@@ -18,9 +18,7 @@ from temporalio import workflow
 with workflow.unsafe.imports_passed_through():
     from temporalio.contrib.langgraph import graph
 
-    from app.integrations.servicenow import detect_risk
     from app.platform.hitl import needs_approval, parse_discount
-    from app.temporal.a2a_activity import A2ACallInput, a2a_call_activity
     from app.workflows.approval_workflow import ApprovalWorkflow, ApprovalWorkflowInput
 
 _STAGES = ("intake", "inventory", "pricing", "fulfillment", "account", "outcome")
@@ -114,6 +112,8 @@ class OrderWorkflow:
         app = graph(req.graph_name).compile()
         result = await app.ainvoke({"request": req.request, "chaos": req.chaos})
         out = {stage: result.get(stage, "") for stage in _STAGES}
+        # Incident (if any) is opened by the fulfillment agent itself via A2A.
+        out["incident"] = result.get("incident")
 
         discount = parse_discount(req.request)
         forced = bool(req.chaos.get("force_hitl"))
@@ -129,32 +129,4 @@ class OrderWorkflow:
             "threshold": req.discount_threshold,
             **decision,
         }
-
-        # Third-party leg: if approved and fulfillment flags a risk, open a
-        # ServiceNow incident via A2A (mix of multi-agent + HITL + A2A + 3rd-party).
-        out["incident"] = None
-        approved = bool(decision.get("approved"))
-        risk = (
-            approved
-            and req.open_incident_on_risk
-            and bool(req.servicenow_a2a_url)
-            and detect_risk(out.get("fulfillment", ""), req.risk_keywords)
-        )
-        if risk:
-            message = (
-                "Open incident for order fulfillment risk. "
-                f"Order: {req.request} | Fulfillment: {out.get('fulfillment', '')[:400]}"
-            )
-            try:
-                out["incident"] = await workflow.execute_activity(
-                    a2a_call_activity,
-                    A2ACallInput(
-                        target_url=req.servicenow_a2a_url,
-                        message=message,
-                        timeout_seconds=30.0,
-                    ),
-                    start_to_close_timeout=timedelta(seconds=45),
-                )
-            except Exception as exc:  # keep the order resilient to the 3rd-party call
-                out["incident"] = f"incident-error: {exc}"
         return out

@@ -99,14 +99,16 @@ make run MESSAGE="What time is it?"
                                    │                         │
                      ┌─────────────┼───────────────┐         │
                      ▼             ▼               ▼         │
-              LangGraph pipeline   HITL gate    A2A / 3rd‑party
-              (agents as           (waits for   (ServiceNow agent
-               activities)          a human)     over A2A → incident)
-                     │                                       │
+              LangGraph pipeline   HITL gate    A2AWorkflow
+              (agents as           (waits for   (orchestration-
+               activities)          a human)     level A2A)
+                     │
         each agent's reasoning ──► LYZR (model router) ──► LLM
                      │
                      ▼
-     Intake → Inventory → Pricing → Fulfillment → Account → Supervisor
+   Intake → Inventory → Pricing → Fulfillment ──A2A on risk──► ServiceNow agent → incident
+                                        │
+                                   Account → Supervisor
 
   OBSERVABILITY
   ─────────────────────────────────────────────────────────────────────
@@ -133,8 +135,8 @@ Cloud service metrics (scraped by the collector, optional).
 |---|---|---|
 | **Multi‑agent pipeline** | 6 specialist agents collaborate on an order, durably | `app/agent/multi.py`, `OrderWorkflow` |
 | **Human‑in‑the‑loop** | Workflow pauses for approval when discount > threshold; resume by signal | `app/workflows/*`, `app/platform/hitl.py` |
-| **Agent‑to‑agent (A2A)** | Thin A2A protocol (agent card + task endpoint); agents call agents | `app/platform/a2a.py` |
-| **Third‑party agent** | ServiceNow incident agent (simulator now, real PDI by config) reached over A2A | `app/integrations/servicenow.py` |
+| **Agent‑to‑agent (A2A)** | Thin A2A protocol (agent card + task endpoint). An **agent can call another agent from inside its own node**, and workflows can orchestrate A2A too | `app/platform/a2a.py`, `app/agent/multi.py` |
+| **Third‑party agent** | ServiceNow incident agent (simulator now, real PDI by config); the fulfillment agent reaches it over A2A on risk | `app/integrations/servicenow.py` |
 | **Chaos / fault injection** | Inject transient/permanent errors, latency/timeouts, forced approval | `app/platform/chaos.py` |
 | **Model router (Lyzr)** | Each agent's reasoning routed through Lyzr; model chosen on Lyzr's side | `app/agent/lyzr.py` |
 | **Observability** | Arize Cloud + Prometheus/Grafana + Temporal UI; traces, metrics, logs | `app/observability/*` |
@@ -142,6 +144,31 @@ Cloud service metrics (scraped by the collector, optional).
 | **Demo UI** | Start/mix/inject/approve — all from one compact page | `app/ui/*` |
 
 Everything is **selectable by config** and **overridable per run** (so the UI can change behavior live).
+
+### Agent‑to‑agent (A2A), in detail
+
+A2A is a **capability of the agents**, not only the orchestrator. There are two
+complementary patterns, and both are supported:
+
+1. **Agent‑level A2A (an agent calls another agent).** A LangGraph node can call
+   a remote agent from *inside itself*. Concretely, the **fulfillment agent**
+   detects a fulfillment risk and calls the **ServiceNow agent** over A2A to open
+   an incident — this happens within the node. Because every node runs inside a
+   Temporal **Activity**, the A2A HTTP call is durable at node granularity (its
+   result is recorded and the node is retried on failure), with no determinism
+   concern. See `_agent_dispatch_servicenow` in `app/agent/multi.py`.
+2. **Orchestration‑level A2A (a workflow calls an agent).** The standalone
+   `A2AWorkflow` makes an A2A call as a first‑class durable workflow (via the
+   `a2a` entrypoint) — useful when the interaction *is* the process, or to
+   compose agents outside a single graph.
+
+Any A2A agent (ours or a third party) exposes the same contract — an **agent
+card** (`GET /.well-known/agent-card.json`) and a **task endpoint**
+(`POST /a2a/message`) — so new agents plug in uniformly. Remote agents are
+registered in config under `a2a.agents` (name → URL); the ServiceNow target the
+fulfillment agent uses comes from `third_party.servicenow.a2a_url`. Giving
+another agent an A2A capability is the same pattern: resolve a target URL from
+config and call `A2AClient` inside that agent's node.
 
 ---
 

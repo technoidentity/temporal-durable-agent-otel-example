@@ -40,3 +40,32 @@ async def test_order_pipeline_runs_offline():
         assert result.get(stage), f"missing stage output: {stage}"
     # The fake model echoes its prompt, so distinct nodes yield distinct text.
     assert result["intake"] != result["outcome"]
+
+
+def test_agent_level_a2a_dispatch_on_risk(monkeypatch):
+    """The fulfillment agent itself calls the ServiceNow agent over A2A on risk."""
+    import app.agent.multi as multi
+    from app.platform.a2a import A2AResult
+
+    class FakeA2A:
+        def __init__(self, **kw):
+            pass
+
+        def send_sync(self, url, message, context_id=None):
+            assert "risk" in message.lower()
+            return A2AResult(task_id="t", status="completed", result="Opened INC0010099", agent="servicenow")
+
+    monkeypatch.setattr(multi, "A2AClient", FakeA2A)
+    multi._A2A.clear()
+    multi._A2A.update({
+        "enabled": True, "servicenow_url": "http://sn:8801",
+        "open_on_risk": True, "risk_keywords": ["risk", "shortfall"],
+    })
+
+    # risk present -> dispatches, returns incident
+    assert multi._agent_dispatch_servicenow("stock shortfall risk") == "Opened INC0010099"
+    # no risk -> no dispatch
+    assert multi._agent_dispatch_servicenow("all good, shipping normally") is None
+    # disabled -> no dispatch
+    multi._A2A["enabled"] = False
+    assert multi._agent_dispatch_servicenow("stock shortfall risk") is None
