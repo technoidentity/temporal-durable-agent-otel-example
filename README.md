@@ -528,6 +528,29 @@ graph.add_node(role, _NODES[role], metadata={
 })
 ```
 
+> **Reference — the LangGraph Temporal plugin.** Nodes‑as‑activities are powered by
+> [`temporalio.contrib.langgraph.LangGraphPlugin`](https://github.com/temporalio/sdk-python/tree/main/temporalio/contrib/langgraph)
+> (Temporal Python SDK, experimental). It runs LangGraph `StateGraph` nodes (and
+> Functional‑API `@task`s) as Temporal activities; a workflow retrieves a
+> registered graph with `graph("<name>").compile().ainvoke(...)`. Each node's
+> `metadata` must set `execute_in` (`"activity"` or `"workflow"`) and may carry any
+> `workflow.execute_activity` option (`start_to_close_timeout`, `retry_policy`, …).
+> In this repo the plugin is constructed in `app/entrypoints/worker.py` and fed
+> graphs from `app/agent/graph.py` (hello agent) and `app/agent/multi.py` (order
+> pipeline). Install the extra with `uv add "temporalio[langgraph]"`.
+>
+> ```python
+> # app/entrypoints/worker.py
+> from temporalio.contrib.langgraph import LangGraphPlugin
+> plugin = LangGraphPlugin(
+>     graphs={settings.multi_agent.graph_name: build_order_graph(settings)},
+>     default_activity_options=build_activity_options(settings.temporal.activity),
+> )
+> # app/workflows/order_workflow.py (inside @workflow.run)
+> from temporalio.contrib.langgraph import graph
+> result = await graph(req.graph_name).compile().ainvoke({"request": req.request})
+> ```
+
 **(b) Plain Temporal activities.** Defined with `@activity.defn` and called from a
 workflow with `workflow.execute_activity(...)`.
 
