@@ -65,3 +65,30 @@ def test_servicenow_config_defaults():
     assert sn.mode == "simulator"
     assert sn.open_incident_on_risk is True
     assert "risk" in sn.risk_keywords
+
+
+def test_upsert_is_idempotent_on_correlation_id():
+    """A retried create with the same correlation_id returns the same ticket
+    instead of opening a duplicate (review B3)."""
+    store = IncidentStore(seed=False)
+    a = store.create("Fulfillment risk", "desc", "2", correlation_id="wf-123-servicenow")
+    b = store.create("Fulfillment risk", "desc", "2", correlation_id="wf-123-servicenow")
+    assert a.number == b.number
+    assert len(store.all()) == 1
+    # A different correlation id is a distinct ticket.
+    c = store.create("Other", "desc", "3", correlation_id="wf-999-servicenow")
+    assert c.number != a.number
+    assert len(store.all()) == 2
+
+
+async def test_agent_passes_context_id_as_correlation_id():
+    """The A2A context id flows through to ServiceNow as the correlation id."""
+    from app.integrations.servicenow import SimulatorBackend
+    from app.entrypoints.servicenow_agent import _handler
+
+    store = IncidentStore(seed=False)
+    handler = _handler(SimulatorBackend(store))
+    await handler("stock shortfall risk", {"context_id": "wf-abc-servicenow"})
+    await handler("stock shortfall risk", {"context_id": "wf-abc-servicenow"})  # retry
+    assert len(store.all()) == 1
+    assert store.all()[0].correlation_id == "wf-abc-servicenow"

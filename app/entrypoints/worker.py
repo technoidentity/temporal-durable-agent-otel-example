@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import signal
+from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 
 from temporalio.contrib.langgraph import LangGraphPlugin
 from temporalio.worker import Worker
@@ -57,12 +59,17 @@ async def run_worker(settings: AppSettings) -> None:
         raise ValueError("no graphs enabled: enable langgraph and/or multi_agent")
 
     activities: list = []
-    if settings.a2a.enabled:
+    # The order workflow opens ServiceNow incidents via a2a_call_activity, so the
+    # activity must be registered whenever multi-agent runs (not only when the
+    # standalone A2AWorkflow is enabled).
+    if settings.multi_agent.enabled or settings.a2a.enabled:
         from app.temporal.a2a_activity import a2a_call_activity
+
+        activities.append(a2a_call_activity)
+    if settings.a2a.enabled:
         from app.workflows.a2a_workflow import A2AWorkflow
 
         workflows.append(A2AWorkflow)
-        activities.append(a2a_call_activity)
         log.info("a2a.enabled", agents=list(settings.a2a.agents))
 
     plugin = LangGraphPlugin(
@@ -70,8 +77,12 @@ async def run_worker(settings: AppSettings) -> None:
         default_activity_options=build_activity_options(settings.temporal.activity),
     )
 
+    # Register the plugin on the CLIENT (review H1); the Worker inherits its
+    # client's plugins, so passing it to the Worker as well double-registers the
+    # node activities ("More than one activity named ..."). Client-only is the
+    # correct single registration.
     client = await create_temporal_client(
-        settings, runtime=runtime, interceptors=interceptors
+        settings, runtime=runtime, interceptors=interceptors, plugins=[plugin]
     )
     log.info(
         "temporal.connected",
@@ -79,12 +90,25 @@ async def run_worker(settings: AppSettings) -> None:
         namespace=settings.temporal.namespace,
     )
 
+    # Sync graph nodes are offloaded to threads; size the pool explicitly and
+    # bound activity concurrency so one slow LLM call cannot starve the worker
+    # (review H2).
+    max_activities = 20
+    pool = ThreadPoolExecutor(max_workers=max_activities, thread_name_prefix="activity")
+    asyncio.get_running_loop().set_default_executor(pool)
+
     worker = Worker(
         client,
         task_queue=settings.temporal.task_queue,
         workflows=workflows,
         activities=activities,
-        plugins=[plugin],
+        activity_executor=pool,
+        max_concurrent_activities=max_activities,
+        # Let in-flight activities finish on SIGTERM instead of being cut off and
+        # re-run on restart (review H6). Must exceed the longest activity.
+        graceful_shutdown_timeout=timedelta(
+            seconds=settings.temporal.activity.start_to_close_timeout_seconds + 30
+        ),
     )
 
     stop = asyncio.Event()

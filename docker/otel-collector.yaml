@@ -65,7 +65,9 @@ exporters:
   # Arize Cloud (AX) — the "via OTel Collector" trace path. Requires
   # ARIZE_OTLP_ENDPOINT / ARIZE_SPACE_ID / ARIZE_API_KEY in the collector env.
   otlphttp/arize:
-    endpoint: ${env:ARIZE_OTLP_ENDPOINT}
+    # Default keeps the collector valid even when Arize env vars are unset
+    # (only used if otlphttp/arize is added to the traces pipeline).
+    endpoint: ${env:ARIZE_OTLP_ENDPOINT:-https://otlp.arize.com/v1}
     headers:
       space_id: ${env:ARIZE_SPACE_ID}
       api_key: ${env:ARIZE_API_KEY}

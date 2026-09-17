@@ -21,10 +21,8 @@ from typing_extensions import TypedDict
 
 from app.agent.nodes import build_llm
 from app.config.models import AppSettings, LLMConfig, LLMProvider
-from app.integrations.servicenow import detect_risk
 from app.observability.metrics import get_agent_metrics
 from app.observability.tracing import get_tracer
-from app.platform.a2a import A2AClient
 from app.platform.chaos import ChaosError, maybe_inject
 from app.temporal.retry import build_activity_options
 
@@ -38,7 +36,6 @@ class OrderState(TypedDict, total=False):
     fulfillment: str
     account: str
     outcome: str
-    incident: str
 
 
 # Role -> LLM, populated at graph-build time (worker startup). Activities run in
@@ -46,43 +43,11 @@ class OrderState(TypedDict, total=False):
 _AGENTS: dict[str, BaseChatModel] = {}
 _MODEL_LABEL: str = "lyzr"
 
-# A2A capability available to agent nodes (configured at graph-build time). This
-# lets an agent itself delegate to another agent (e.g. the fulfillment agent
-# opening a ServiceNow incident over A2A), not just the workflow orchestration.
-_A2A: dict[str, object] = {"enabled": False}
-
-
-def _configure_a2a(settings: AppSettings) -> None:
-    sn = settings.third_party.servicenow
-    _A2A.clear()
-    _A2A.update(
-        {
-            "enabled": bool(sn.enabled and settings.a2a.enabled),
-            "servicenow_url": sn.a2a_url,
-            "open_on_risk": bool(sn.open_incident_on_risk),
-            "risk_keywords": list(sn.risk_keywords),
-        }
-    )
-
-
-def _agent_dispatch_servicenow(fulfillment_text: str) -> str | None:
-    """The fulfillment agent's own A2A call: open a ServiceNow incident on risk.
-
-    Runs inside the fulfillment node's Activity, so the A2A HTTP call is durable
-    at node granularity (recorded result, retried with the node).
-    """
-    if not _A2A.get("enabled") or not _A2A.get("open_on_risk"):
-        return None
-    url = str(_A2A.get("servicenow_url") or "")
-    if not url or not detect_risk(fulfillment_text, list(_A2A.get("risk_keywords") or [])):
-        return None
-    tracer = get_tracer()
-    with tracer.start_as_current_span("agent.a2a.servicenow"):
-        with get_agent_metrics().tool_call("a2a:servicenow"):
-            res = A2AClient().send_sync(
-                url, f"Open incident for fulfillment risk: {fulfillment_text[:400]}"
-            )
-    return res.result
+# The ServiceNow side effect is intentionally NOT made here. Firing an external,
+# non-idempotent call from inside the LLM node fuses reasoning with a side effect,
+# so a retried LLM re-opens the incident (review B3). Instead the fulfillment
+# agent only reasons; the workflow deterministically detects risk and calls a
+# dedicated, idempotency-keyed activity to open the incident.
 
 KNOWN_ROLES = ["intake", "inventory", "pricing", "fulfillment", "account", "supervisor"]
 
@@ -154,13 +119,9 @@ def pricing_node(state: OrderState) -> dict:
 
 
 def fulfillment_node(state: OrderState) -> dict:
-    text = _run("fulfillment", _p_fulfillment(state), state.get("chaos"))
-    out: dict = {"fulfillment": text}
-    # The fulfillment agent itself delegates to the ServiceNow agent (A2A) on risk.
-    incident = _agent_dispatch_servicenow(text)
-    if incident:
-        out["incident"] = incident
-    return out
+    # Pure reasoning only. The ServiceNow incident (a side effect) is opened by
+    # the workflow via a dedicated, idempotency-keyed activity (review B3).
+    return {"fulfillment": _run("fulfillment", _p_fulfillment(state), state.get("chaos"))}
 
 
 def account_node(state: OrderState) -> dict:
@@ -227,7 +188,6 @@ def build_order_graph(settings: AppSettings) -> StateGraph:
         raise ValueError("multi_agent.pipeline has no known roles")
 
     _build_agents(settings, roles)
-    _configure_a2a(settings)
 
     activity_metadata = {
         "execute_in": "activity",

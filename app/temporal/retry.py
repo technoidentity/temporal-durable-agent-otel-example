@@ -17,6 +17,8 @@ def build_retry_policy(activity: ActivityConfig) -> RetryPolicy:
         backoff_coefficient=r.backoff_coefficient,
         maximum_interval=timedelta(seconds=r.maximum_interval_seconds),
         maximum_attempts=r.maximum_attempts,
+        # Don't retry invalid-input / configuration errors — fail fast and clearly.
+        non_retryable_error_types=list(r.non_retryable_error_types),
     )
 
 
@@ -24,8 +26,11 @@ def build_activity_options(activity: ActivityConfig) -> dict[str, Any]:
     """Activity options applied to LangGraph nodes that run as Activities.
 
     Passed through to ``workflow.execute_activity`` by the LangGraph plugin.
+    Includes a heartbeat timeout so hung activities surface quickly and
+    cancellation can be delivered.
     """
     return {
         "start_to_close_timeout": timedelta(seconds=activity.start_to_close_timeout_seconds),
+        "heartbeat_timeout": timedelta(seconds=activity.heartbeat_timeout_seconds),
         "retry_policy": build_retry_policy(activity),
     }

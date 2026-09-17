@@ -88,15 +88,24 @@ class RetryConfig(BaseModel):
     backoff_coefficient: float = 2.0
     maximum_interval_seconds: float = 30.0
     maximum_attempts: int = 3
+    # Errors that should NOT be retried (invalid input / config / bad request).
+    # Retrying these just burns attempts and delays a clear failure.
+    non_retryable_error_types: list[str] = Field(
+        default_factory=lambda: ["ValueError", "TypeError", "KeyError"]
+    )
 
 
 class WorkflowConfig(BaseModel):
-    execution_timeout_seconds: int = 300
+    # Must exceed hitl.approval_timeout_seconds (a durable human wait counts
+    # against the workflow's execution timeout). Enforced by AppSettings.
+    execution_timeout_seconds: int = 604800  # 7 days
 
 
 class ActivityConfig(BaseModel):
     start_to_close_timeout_seconds: int = 60
-    maximum_attempts: int = 3
+    # A hung activity is invisible until start_to_close elapses and cancellation
+    # cannot be delivered without heartbeats, so set a heartbeat timeout too.
+    heartbeat_timeout_seconds: int = 30
     retry: RetryConfig = Field(default_factory=RetryConfig)
 
 
@@ -368,7 +377,6 @@ class ObservabilityConfig(BaseModel):
     instrument_llm: bool = False
     metrics: SignalToggle = Field(default_factory=SignalToggle)
     traces: SignalToggle = Field(default_factory=SignalToggle)
-    logs: SignalToggle = Field(default_factory=SignalToggle)
     temporal_worker_metrics: SignalToggle = Field(default_factory=SignalToggle)
     temporal_cloud_metrics: TemporalCloudMetricsConfig = Field(
         default_factory=TemporalCloudMetricsConfig
@@ -430,3 +438,20 @@ class AppSettings(BaseModel):
     infrastructure: InfrastructureConfig = Field(default_factory=InfrastructureConfig)
 
     model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def _validate_timeouts(self) -> "AppSettings":
+        # A human-in-the-loop wait counts against the workflow execution timeout.
+        # If the gate can wait longer than the workflow may run, Temporal
+        # terminates the order before anyone can approve it (see review B1).
+        if self.hitl.enabled and (
+            self.hitl.approval_timeout_seconds >= self.temporal.workflow.execution_timeout_seconds
+        ):
+            raise ValueError(
+                "hitl.approval_timeout_seconds "
+                f"({self.hitl.approval_timeout_seconds}) must be less than "
+                "temporal.workflow.execution_timeout_seconds "
+                f"({self.temporal.workflow.execution_timeout_seconds}); otherwise the "
+                "approval gate is terminated before it can resolve."
+            )
+        return self

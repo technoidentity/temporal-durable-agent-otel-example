@@ -157,9 +157,23 @@ def tools_node(state: dict) -> dict:
     tool_calls = getattr(last, "tool_calls", None) or []
     outputs: list[ToolMessage] = []
     for call in tool_calls:
-        tool = _TOOLS_BY_NAME[call["name"]]
+        name = call["name"]
+        tool = _TOOLS_BY_NAME.get(name)
+        if tool is None:
+            # A hallucinated tool name must not raise (a retryable KeyError would
+            # burn every attempt on deterministic output, review H5). Return an
+            # error ToolMessage so the agent can self-correct on the next turn.
+            outputs.append(
+                ToolMessage(
+                    content=f"Error: unknown tool '{name}'. Available: {sorted(_TOOLS_BY_NAME)}",
+                    tool_call_id=call["id"],
+                    name=name,
+                    status="error",
+                )
+            )
+            continue
         result = tool.invoke(call.get("args", {}))
         outputs.append(
-            ToolMessage(content=str(result), tool_call_id=call["id"], name=call["name"])
+            ToolMessage(content=str(result), tool_call_id=call["id"], name=name)
         )
     return {"messages": outputs}

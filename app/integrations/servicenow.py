@@ -37,6 +37,9 @@ class Incident:
     urgency: str = "3"
     state: str = "1"  # 1 = New
     opened_at: str = ""
+    # Idempotency key (ServiceNow's own field). A repeated create with the same
+    # correlation_id upserts instead of opening a duplicate ticket (review B3).
+    correlation_id: str = ""
 
 
 _SEED = [
@@ -59,13 +62,25 @@ class IncidentStore:
         self._counter += 1
         return f"INC{self._counter:07d}"
 
-    def create(self, short_description: str, description: str = "", urgency: str = "3") -> Incident:
+    def create(
+        self,
+        short_description: str,
+        description: str = "",
+        urgency: str = "3",
+        correlation_id: str = "",
+    ) -> Incident:
+        # Upsert on correlation_id: a retried create returns the existing ticket.
+        if correlation_id:
+            for existing in self._items:
+                if existing.correlation_id == correlation_id:
+                    return existing
         inc = Incident(
             number=self._next_number(),
             short_description=short_description[:160],
             description=description,
             urgency=urgency,
             opened_at=datetime.now(timezone.utc).isoformat(),
+            correlation_id=correlation_id,
         )
         self._items.append(inc)
         return inc
@@ -83,7 +98,9 @@ def incident_result(inc: Incident) -> dict:
 # backends: how the agent actually creates an incident
 # --------------------------------------------------------------------------- #
 class ServiceNowBackend(Protocol):
-    async def create_incident(self, short_description: str, description: str, urgency: str) -> dict:
+    async def create_incident(
+        self, short_description: str, description: str, urgency: str, correlation_id: str = ""
+    ) -> dict:
         ...
 
 
@@ -93,8 +110,12 @@ class SimulatorBackend:
     def __init__(self, store: IncidentStore) -> None:
         self._store = store
 
-    async def create_incident(self, short_description: str, description: str, urgency: str = "3") -> dict:
-        return incident_result(self._store.create(short_description, description, urgency))
+    async def create_incident(
+        self, short_description: str, description: str, urgency: str = "3", correlation_id: str = ""
+    ) -> dict:
+        return incident_result(
+            self._store.create(short_description, description, urgency, correlation_id)
+        )
 
 
 class ServiceNowClient:
@@ -105,9 +126,17 @@ class ServiceNowClient:
         self._auth = (username, password)
         self._table = table
 
-    async def create_incident(self, short_description: str, description: str, urgency: str = "3") -> dict:
+    async def create_incident(
+        self, short_description: str, description: str, urgency: str = "3", correlation_id: str = ""
+    ) -> dict:
         url = f"{self._base}/api/now/table/{self._table}"
-        payload = {"short_description": short_description, "description": description, "urgency": urgency}
+        payload = {
+            "short_description": short_description,
+            "description": description,
+            "urgency": urgency,
+        }
+        if correlation_id:
+            payload["correlation_id"] = correlation_id  # ServiceNow dedup field
         async with httpx.AsyncClient(timeout=30.0) as c:
             r = await c.post(url, json=payload, auth=self._auth,
                              headers={"Accept": "application/json"})

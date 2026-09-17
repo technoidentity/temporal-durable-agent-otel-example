@@ -15,11 +15,13 @@ from datetime import timedelta
 
 import click
 from temporalio.client import WorkflowExecutionStatus
+from temporalio.common import WorkflowIDReusePolicy
 
 from app.config import load_settings
 from app.config.models import AppSettings
 from app.observability import build_temporal_interceptors, get_agent_metrics, init_telemetry
 from app.temporal.client import create_temporal_client
+from app.temporal.runtime import create_runtime
 from app.workflows.order_workflow import OrderWorkflow, OrderWorkflowInput
 
 
@@ -46,7 +48,10 @@ async def execute(settings: AppSettings, request: str, workflow_id: str | None, 
     telemetry = init_telemetry(settings)
     metrics = get_agent_metrics()
     interceptors = build_temporal_interceptors(settings)
-    client = await create_temporal_client(settings, interceptors=interceptors)
+    # Runtime on the client too, so client-side SDK metrics are emitted (review L4).
+    client = await create_temporal_client(
+        settings, runtime=create_runtime(settings), interceptors=interceptors
+    )
 
     metrics.workflow_requested()
     handle = await client.start_workflow(
@@ -57,6 +62,9 @@ async def execute(settings: AppSettings, request: str, workflow_id: str | None, 
         execution_timeout=timedelta(
             seconds=settings.temporal.workflow.execution_timeout_seconds
         ),
+        # Supplying a business key as --workflow-id then dedupes double-submits
+        # (review M3); random ids get a fresh run each time.
+        id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
     )
     print(f"Workflow ID: {workflow_id}")
 

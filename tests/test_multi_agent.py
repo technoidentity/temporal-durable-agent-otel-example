@@ -1,6 +1,7 @@
 """Multi-agent order pipeline: config, graph shape, and an offline run."""
 
 from app.agent.multi import KNOWN_ROLES, build_order_graph
+from app.agent.nodes import build_llm
 from app.config.models import AppSettings, LLMConfig, LLMProvider, MultiAgentConfig
 
 
@@ -42,30 +43,15 @@ async def test_order_pipeline_runs_offline():
     assert result["intake"] != result["outcome"]
 
 
-def test_agent_level_a2a_dispatch_on_risk(monkeypatch):
-    """The fulfillment agent itself calls the ServiceNow agent over A2A on risk."""
+def test_fulfillment_node_is_pure_reasoning():
+    """The side effect (ServiceNow) was moved out of the LLM node (review B3):
+    the node must only produce reasoning, never open an incident."""
     import app.agent.multi as multi
-    from app.platform.a2a import A2AResult
 
-    class FakeA2A:
-        def __init__(self, **kw):
-            pass
+    # The agent-level dispatch helper is gone; the workflow owns the side effect.
+    assert not hasattr(multi, "_agent_dispatch_servicenow")
 
-        def send_sync(self, url, message, context_id=None):
-            assert "risk" in message.lower()
-            return A2AResult(task_id="t", status="completed", result="Opened INC0010099", agent="servicenow")
-
-    monkeypatch.setattr(multi, "A2AClient", FakeA2A)
-    multi._A2A.clear()
-    multi._A2A.update({
-        "enabled": True, "servicenow_url": "http://sn:8801",
-        "open_on_risk": True, "risk_keywords": ["risk", "shortfall"],
-    })
-
-    # risk present -> dispatches, returns incident
-    assert multi._agent_dispatch_servicenow("stock shortfall risk") == "Opened INC0010099"
-    # no risk -> no dispatch
-    assert multi._agent_dispatch_servicenow("all good, shipping normally") is None
-    # disabled -> no dispatch
-    multi._A2A["enabled"] = False
-    assert multi._agent_dispatch_servicenow("stock shortfall risk") is None
+    multi._AGENTS.clear()
+    multi._AGENTS["fulfillment"] = build_llm(LLMConfig(provider=LLMProvider.fake))
+    out = multi.fulfillment_node({"request": "rush order, stock shortfall risk"})
+    assert set(out) == {"fulfillment"}  # no "incident" key from the node

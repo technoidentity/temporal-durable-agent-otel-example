@@ -14,6 +14,7 @@ import uuid
 from datetime import timedelta
 
 import click
+from temporalio.common import WorkflowIDReusePolicy
 
 from app.config import load_settings
 from app.config.models import AppSettings
@@ -23,6 +24,7 @@ from app.observability import (
     init_telemetry,
 )
 from app.temporal.client import create_temporal_client
+from app.temporal.runtime import create_runtime
 from app.workflows.agent_workflow import AgentWorkflow, AgentWorkflowInput
 
 
@@ -33,7 +35,9 @@ async def execute(settings: AppSettings, message: str, workflow_id: str | None) 
     telemetry = init_telemetry(settings)
     metrics = get_agent_metrics()
     interceptors = build_temporal_interceptors(settings)
-    client = await create_temporal_client(settings, interceptors=interceptors)
+    client = await create_temporal_client(
+        settings, runtime=create_runtime(settings), interceptors=interceptors
+    )
 
     print(f"Workflow ID: {workflow_id}")
     metrics.workflow_requested()
@@ -46,6 +50,7 @@ async def execute(settings: AppSettings, message: str, workflow_id: str | None) 
             execution_timeout=timedelta(
                 seconds=settings.temporal.workflow.execution_timeout_seconds
             ),
+            id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
         )
     except Exception:
         metrics.workflow_failed()

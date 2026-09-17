@@ -34,6 +34,8 @@ x-app-base: &app-base
     ARIZE_API_KEY: ${ARIZE_API_KEY:-}
   volumes:
     - ./config:/app/config:ro
+  # Drain in-flight activities on stop instead of a 10s SIGKILL (review H6).
+  stop_grace_period: 150s
 
 services:
   postgresql:

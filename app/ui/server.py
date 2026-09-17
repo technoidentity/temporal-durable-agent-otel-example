@@ -17,10 +17,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
+from temporalio.common import WorkflowIDReusePolicy
 
 from app.agent.multi import KNOWN_ROLES
 from app.config.models import AppSettings
 from app.temporal.client import create_temporal_client
+from app.temporal.runtime import create_runtime
 from app.workflows.order_workflow import OrderWorkflow, OrderWorkflowInput
 from app.workflows.approval_workflow import ApprovalWorkflow
 from app.ui.execution import execution_view
@@ -64,7 +66,9 @@ def create_ui_app(
     app = FastAPI(title="PepsiCo Agent Ops")
     app.state.settings = settings
     app.state.client = None
-    app.state.client_factory = client_factory or (lambda: create_temporal_client(settings))
+    app.state.client_factory = client_factory or (
+        lambda: create_temporal_client(settings, runtime=create_runtime(settings))
+    )
     app.state.runs: list[dict] = []
 
     async def client() -> Any:
@@ -137,6 +141,7 @@ def create_ui_app(
             execution_timeout=timedelta(
                 seconds=settings.temporal.workflow.execution_timeout_seconds
             ),
+            id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
         )
         app.state.runs.insert(0, {"id": wfid, "request": body.request})
         app.state.runs = app.state.runs[:25]
