@@ -85,9 +85,14 @@ Two ways to run it. **Offline mode** needs no keys; **live mode** uses real Lyzr
 ### Setup
 ```bash
 make install                                   # create .venv, install deps
+source .venv/bin/activate                      # activate it before running commands
 cp .env.example .env                           # local settings (gitignored)
 cp config/config.example.yaml config/config.yaml
 ```
+
+> Activate the virtualenv (`source .venv/bin/activate`) in every new shell before
+> running any `python -m app.entrypoints.…` command, or prefix them with
+> `.venv/bin/python` instead. The `make` targets activate it for you.
 
 ### Option A — Offline demo (no keys)
 Uses a deterministic `fake` model so the whole flow runs without any API key.
