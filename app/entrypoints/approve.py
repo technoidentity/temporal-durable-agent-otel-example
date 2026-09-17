@@ -11,6 +11,7 @@ import asyncio
 
 import click
 from temporalio.client import WorkflowExecutionStatus, WorkflowUpdateFailedError
+from temporalio.service import RPCError
 
 from app.config import load_settings
 from app.config.models import AppSettings
@@ -49,6 +50,9 @@ async def _run(settings: AppSettings, workflow_id: str, approved: bool | None, a
         await handle.execute_update(wf.decide_update, args=[approved, approver, note])
     except WorkflowUpdateFailedError as exc:
         raise SystemExit(f"decision rejected: {exc.cause}")
+    except RPCError as exc:
+        # e.g. the gate already closed and the workflow completed in the meantime.
+        raise SystemExit(f"could not record decision: {exc.message}")
     print(f"{'approved' if approved else 'rejected'} {handle.id}")
 
 
