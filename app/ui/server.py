@@ -17,7 +17,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
+from temporalio.client import (
+    WorkflowExecutionStatus,
+    WorkflowQueryFailedError,
+    WorkflowUpdateFailedError,
+)
 from temporalio.common import WorkflowIDReusePolicy
+from temporalio.service import RPCError
 
 from app.agent.multi import KNOWN_ROLES
 from app.config.models import AppSettings
@@ -132,6 +138,7 @@ def create_ui_app(
             open_incident_on_risk=sn.enabled and sn.open_incident_on_risk,
             risk_keywords=list(sn.risk_keywords),
             chaos=chaos,
+            search_attributes_enabled=settings.temporal.search_attributes_enabled,
         )
         await c.start_workflow(
             OrderWorkflow.run,
@@ -156,21 +163,24 @@ def create_ui_app(
         c = await client()
         handle = c.get_workflow_handle(wfid)
         desc = await handle.describe()
-        status = desc.status.name if getattr(desc, "status", None) else "UNKNOWN"
+        raw = getattr(desc, "status", None)
+        status = raw.name if raw else "UNKNOWN"
         pending: dict = {"pending": False}
         result = None
         execution = await execution_view(
             handle, desc, [r for r in settings.multi_agent.pipeline if r in KNOWN_ROLES],
             getattr(c, "data_converter", None),
         )
-        if status == "RUNNING":
+        if raw == WorkflowExecutionStatus.RUNNING:
             try:
                 child_id = execution.get("child_workflow_id")
                 approval_handle = c.get_workflow_handle(child_id) if child_id else handle
                 pending = await approval_handle.query(ApprovalWorkflow.pending if child_id else OrderWorkflow.pending)
-            except Exception:
+            except (WorkflowQueryFailedError, RPCError):
+                # Gate not yet queryable (worker restart / handler not registered)
+                # — report unavailable rather than swallow every error (review L3).
                 pending = {"pending": False, "unavailable": True}
-        elif status == "COMPLETED":
+        elif raw == WorkflowExecutionStatus.COMPLETED:
             try:
                 result = await handle.result()
             except Exception:
@@ -182,16 +192,20 @@ def create_ui_app(
         c = await client()
         handle = c.get_workflow_handle(wfid)
         desc = await handle.describe()
-        if desc.status.name != "RUNNING":
+        if desc.status != WorkflowExecutionStatus.RUNNING:
             raise HTTPException(409, "This workflow has already closed. Refresh its status.")
         execution = await execution_view(handle, desc, [], getattr(c, "data_converter", None))
         child_id = execution.get("child_workflow_id")
         target = c.get_workflow_handle(child_id) if child_id else handle
-        pending = await target.query(ApprovalWorkflow.pending if child_id else OrderWorkflow.pending)
-        if not pending.get("pending"):
+        # Update (not signal): the validator atomically rejects a decision when
+        # no gate is open or one was already made, so we don't pre-query (L1).
+        try:
+            await target.execute_update(
+                ApprovalWorkflow.decide_update if child_id else OrderWorkflow.decide_update,
+                args=[body.approved, body.approver, body.note],
+            )
+        except WorkflowUpdateFailedError:
             raise HTTPException(409, "This workflow is not waiting for approval. Refresh its status.")
-        await target.signal(ApprovalWorkflow.decide if child_id else OrderWorkflow.decide,
-                            args=[body.approved, body.approver, body.note])
         return {"ok": True}
 
     return app

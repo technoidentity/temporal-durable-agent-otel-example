@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
+from temporalio.client import WorkflowExecutionStatus, WorkflowUpdateFailedError
 
 from app.config.models import AppSettings, HITLConfig, MultiAgentConfig, ServiceNowConfig, ThirdPartyConfig
 from app.ui.server import create_ui_app
@@ -14,13 +15,20 @@ class FakeHandle:
         self._state = state
 
     async def describe(self):
-        return SimpleNamespace(status=SimpleNamespace(name=self._state["status"]))
+        st = self._state["status"]
+        status = getattr(WorkflowExecutionStatus, st) if isinstance(st, str) else st
+        return SimpleNamespace(status=status)
 
     async def query(self, _q):
         return self._state.get("pending", {"pending": False})
 
-    async def signal(self, _s, args=None):
-        self._state["signalled"] = args
+    async def execute_update(self, _u, args=None):
+        # Mirror the validator: reject when no gate is open (review L1).
+        if not self._state.get("pending", {}).get("pending"):
+            raise WorkflowUpdateFailedError(RuntimeError("not awaiting approval"))
+        self._state["updated"] = args
+        self._state["pending"] = {"pending": False}
+        return {"approved": args[0]}
 
     async def result(self):
         return self._state.get("result")
@@ -96,7 +104,7 @@ def test_order_status_and_decision():
 
     r = client.post(f"/api/orders/{wfid}/decision", json={"approved": True, "note": "ok"})
     assert r.json()["ok"] is True
-    assert fake.states[wfid]["signalled"] == [True, "ui", "ok"]
+    assert fake.states[wfid]["updated"] == [True, "ui", "ok"]
 
 
 def test_list_orders_tracks_runs():
@@ -133,8 +141,8 @@ def test_child_approval_is_queried_and_signaled():
     fake.states[child] = {"status": "RUNNING", "pending": {"pending": True, "details": "Child gate"}}
     assert client.get(f"/api/orders/{wfid}").json()["pending"]["details"] == "Child gate"
     assert client.post(f"/api/orders/{wfid}/decision", json={"approved": False}).status_code == 200
-    assert fake.states[child]["signalled"] == [False, "ui", ""]
-    assert "signalled" not in fake.states[wfid]
+    assert fake.states[child]["updated"] == [False, "ui", ""]
+    assert "updated" not in fake.states[wfid]
 
 
 def test_invalid_order_inputs_are_rejected():

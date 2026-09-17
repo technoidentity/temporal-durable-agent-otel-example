@@ -49,6 +49,42 @@ def test_hitl_config_overridable():
     assert s.hitl.mode is HITLMode.child
 
 
+def test_update_gate_validator_and_first_wins():
+    """Review L1: the update validator rejects a decision when no gate is open or
+    one was already made; the shared recorder keeps the first decision."""
+    from temporalio.exceptions import ApplicationError
+    from app.workflows.order_workflow import OrderWorkflow
+
+    wf = OrderWorkflow()
+    # No gate open -> rejected.
+    with pytest.raises(ApplicationError):
+        wf._validate_decide(True, "op", "")
+
+    wf._pending = {"pending": True}
+    wf._validate_decide(True, "op", "ok")  # gate open -> allowed
+    out = wf.decide_update(True, "op", "ok")
+    assert out == {"approved": True, "approver": "op", "note": "ok", "via": "human"}
+
+    # Already decided -> rejected, and a late signal cannot flip it (first-wins).
+    with pytest.raises(ApplicationError):
+        wf._validate_decide(False, "x", "")
+    wf.decide(False, "late", "no")
+    assert wf._decided is True and wf._approver == "op"
+
+
+def test_approval_workflow_update_validator():
+    from temporalio.exceptions import ApplicationError
+    from app.workflows.approval_workflow import ApprovalWorkflow, ApprovalWorkflowInput
+
+    wf = ApprovalWorkflow()
+    with pytest.raises(ApplicationError):  # run() not started -> no request yet
+        wf._validate_decide(True, "op", "")
+
+    wf._req = ApprovalWorkflowInput(reason="discount-approval", discount=20.0, threshold=15.0)
+    wf._validate_decide(True, "op", "ok")
+    assert wf.decide_update(False, "op", "")["approved"] is False
+
+
 def test_execution_timeout_must_exceed_approval():
     import pytest
     from app.config.models import AppSettings

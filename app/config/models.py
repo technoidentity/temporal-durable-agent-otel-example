@@ -116,6 +116,11 @@ class TemporalConfig(BaseModel):
     task_queue: str = "langgraph-agent"
     workflow: WorkflowConfig = Field(default_factory=WorkflowConfig)
     activity: ActivityConfig = Field(default_factory=ActivityConfig)
+    # Emit typed Search Attributes for pending approvals (review L2). Off by
+    # default: the attributes must first be registered on the namespace
+    # (`python -m app.entrypoints.infrastructure register-search-attributes`),
+    # otherwise the server rejects the upsert and fails the workflow task.
+    search_attributes_enabled: bool = False
 
     @property
     def address(self) -> str:

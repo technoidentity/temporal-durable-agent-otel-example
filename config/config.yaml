@@ -23,6 +23,10 @@ temporal:
 
   task_queue: langgraph-agent
 
+  # Emit typed Search Attributes for pending approvals (review L2). Register them
+  # first: `python -m app.entrypoints.infrastructure register-search-attributes`.
+  search_attributes_enabled: false
+
   workflow:
     execution_timeout_seconds: 604800   # 7 days — must exceed hitl.approval_timeout_seconds
 

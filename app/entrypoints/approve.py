@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 
 import click
+from temporalio.client import WorkflowExecutionStatus, WorkflowUpdateFailedError
 
 from app.config import load_settings
 from app.config.models import AppSettings
@@ -29,7 +30,7 @@ async def _resolve_gate(client, parent_id: str):
     try:
         child = client.get_workflow_handle(child_id)
         desc = await child.describe()
-        if getattr(desc, "status", None) and desc.status.name == "RUNNING":
+        if desc.status == WorkflowExecutionStatus.RUNNING:
             return child, ApprovalWorkflow
     except Exception:
         pass  # no child -> inline gate on the parent
@@ -42,7 +43,12 @@ async def _run(settings: AppSettings, workflow_id: str, approved: bool | None, a
     if approved is None:
         print(await handle.query(wf.pending))
         return
-    await handle.signal(wf.decide, args=[approved, approver, note])
+    # Update (not signal): the decision is confirmed atomically and a decision on
+    # a closed/already-decided gate is rejected by the validator (review L1).
+    try:
+        await handle.execute_update(wf.decide_update, args=[approved, approver, note])
+    except WorkflowUpdateFailedError as exc:
+        raise SystemExit(f"decision rejected: {exc.cause}")
     print(f"{'approved' if approved else 'rejected'} {handle.id}")
 
 
