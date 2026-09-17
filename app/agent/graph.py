@@ -12,6 +12,7 @@ the deterministic workflow context.
 
 from __future__ import annotations
 
+from langchain_core.messages import convert_to_messages
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import tools_condition
 
@@ -29,8 +30,13 @@ async def route_from_agent(state: dict) -> str:
     ``async`` on purpose: LangGraph awaits async edge functions directly, whereas
     a sync function is offloaded via ``run_in_executor`` — which Temporal's
     workflow event loop does not implement.
+
+    Messages are normalized first (review H3): ``tools_condition`` checks
+    ``msg.tool_calls``, which a dict silently lacks, so without this the tools
+    branch could be missed.
     """
-    return tools_condition(state)
+    messages = convert_to_messages(state.get("messages", []))
+    return tools_condition({"messages": messages})
 
 
 def build_graph(settings: AppSettings) -> StateGraph:

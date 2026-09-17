@@ -43,6 +43,10 @@ x-app: &app
     # on `make app-restart` (no rebuild needed for iteration).
     - ./app:/app/app:ro
   restart: unless-stopped
+  # Give in-flight activities time to drain on stop/restart instead of Docker's
+  # 10s SIGKILL cutting them off and Temporal re-running them (review H6). Must
+  # exceed the worker's graceful_shutdown_timeout.
+  stop_grace_period: 150s
 
 services:
   # Service keys (servicenow-agent, peer-agent) are the DNS names the worker

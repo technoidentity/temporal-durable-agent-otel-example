@@ -14,11 +14,14 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 
 from temporalio import workflow
+from temporalio.common import RetryPolicy, WorkflowIDReusePolicy
 
 with workflow.unsafe.imports_passed_through():
     from temporalio.contrib.langgraph import graph
 
+    from app.integrations.servicenow import detect_risk
     from app.platform.hitl import needs_approval, parse_discount
+    from app.temporal.a2a_activity import A2ACallInput, a2a_call_activity
     from app.workflows.approval_workflow import ApprovalWorkflow, ApprovalWorkflowInput
 
 _STAGES = ("intake", "inventory", "pricing", "fulfillment", "account", "outcome")
@@ -77,6 +80,13 @@ class OrderWorkflow:
                     on_timeout=req.on_timeout,
                 ),
                 id=f"{workflow.info().workflow_id}-approval",
+                # Explicit policies (review M4): the child must be able to wait the
+                # full approval window, a human gate should not be retried, and the
+                # id is deterministic so a duplicate parent cannot fork the gate.
+                execution_timeout=timedelta(seconds=req.approval_timeout_seconds + 300),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+                parent_close_policy=workflow.ParentClosePolicy.TERMINATE,
             )
             return child
 
@@ -112,8 +122,6 @@ class OrderWorkflow:
         app = graph(req.graph_name).compile()
         result = await app.ainvoke({"request": req.request, "chaos": req.chaos})
         out = {stage: result.get(stage, "") for stage in _STAGES}
-        # Incident (if any) is opened by the fulfillment agent itself via A2A.
-        out["incident"] = result.get("incident")
 
         discount = parse_discount(req.request)
         forced = bool(req.chaos.get("force_hitl"))
@@ -129,4 +137,32 @@ class OrderWorkflow:
             "threshold": req.discount_threshold,
             **decision,
         }
+
+        # Third-party leg (review B3): a dedicated, idempotency-keyed activity —
+        # NOT fused with the LLM node — opens the ServiceNow incident on risk.
+        # The deterministic context id makes retries safe (the server upserts).
+        out["incident"] = None
+        fulfillment_text = out.get("fulfillment", "")
+        if (
+            req.servicenow_a2a_url
+            and req.open_incident_on_risk
+            and detect_risk(fulfillment_text, req.risk_keywords)
+        ):
+            try:
+                out["incident"] = await workflow.execute_activity(
+                    a2a_call_activity,
+                    A2ACallInput(
+                        target_url=req.servicenow_a2a_url,
+                        message=(
+                            "Open incident for fulfillment risk. "
+                            f"Order: {req.request} | Fulfillment: {fulfillment_text[:400]}"
+                        ),
+                        context_id=f"{workflow.info().workflow_id}-servicenow",
+                        timeout_seconds=30.0,
+                    ),
+                    start_to_close_timeout=timedelta(seconds=45),
+                    retry_policy=RetryPolicy(maximum_attempts=3),
+                )
+            except Exception as exc:  # keep the order resilient to the 3rd-party call
+                out["incident"] = f"incident-error: {exc}"
         return out

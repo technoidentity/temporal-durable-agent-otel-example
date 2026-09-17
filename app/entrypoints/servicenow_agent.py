@@ -27,7 +27,9 @@ def _handler(backend):
     async def handler(message: str, context: dict) -> str:
         short = message.strip().splitlines()[0][:120] if message.strip() else "Agent-opened incident"
         urgency = "2" if any(k in message.lower() for k in ("urgent", "risk", "shortfall")) else "3"
-        res = await backend.create_incident(short, message, urgency)
+        # The A2A context id is the caller's idempotency key -> ServiceNow correlation_id.
+        correlation_id = str(context.get("context_id") or "")
+        res = await backend.create_incident(short, message, urgency, correlation_id)
         return f"Opened ServiceNow incident {res.get('number')} ({res.get('short_description')})"
 
     return handler

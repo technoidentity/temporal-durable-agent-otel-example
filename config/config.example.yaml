@@ -24,16 +24,17 @@ temporal:
   task_queue: langgraph-agent
 
   workflow:
-    execution_timeout_seconds: 300
+    execution_timeout_seconds: 604800   # 7 days — must exceed hitl.approval_timeout_seconds
 
   activity:
     start_to_close_timeout_seconds: 60
-    maximum_attempts: 3
+    heartbeat_timeout_seconds: 30
     retry:
       initial_interval_seconds: 1
       backoff_coefficient: 2
       maximum_interval_seconds: 30
       maximum_attempts: 3
+      non_retryable_error_types: [ValueError, TypeError, KeyError]
 
 langgraph:
   enabled: true                # single-agent hello graph (tool-calling demo)
@@ -120,8 +121,6 @@ observability:
   metrics:
     enabled: true
   traces:
-    enabled: true
-  logs:
     enabled: true
 
   temporal_worker_metrics:

@@ -14,18 +14,36 @@ import click
 from app.config import load_settings
 from app.config.models import AppSettings
 from app.temporal.client import create_temporal_client
+from app.workflows.approval_workflow import ApprovalWorkflow
 from app.workflows.order_workflow import OrderWorkflow
+
+
+async def _resolve_gate(client, parent_id: str):
+    """Return (handle, workflow_class) for wherever the gate actually lives.
+
+    In child mode the gate is on a child workflow at ``<parent>-approval`` and
+    signalling the parent does nothing (review B2). Auto-detect the child so the
+    same command works for inline and child modes.
+    """
+    child_id = f"{parent_id}-approval"
+    try:
+        child = client.get_workflow_handle(child_id)
+        desc = await child.describe()
+        if getattr(desc, "status", None) and desc.status.name == "RUNNING":
+            return child, ApprovalWorkflow
+    except Exception:
+        pass  # no child -> inline gate on the parent
+    return client.get_workflow_handle(parent_id), OrderWorkflow
 
 
 async def _run(settings: AppSettings, workflow_id: str, approved: bool | None, approver: str, note: str) -> None:
     client = await create_temporal_client(settings)
-    handle = client.get_workflow_handle(workflow_id)
+    handle, wf = await _resolve_gate(client, workflow_id)
     if approved is None:
-        pend = await handle.query(OrderWorkflow.pending)
-        print(pend)
+        print(await handle.query(wf.pending))
         return
-    await handle.signal(OrderWorkflow.decide, args=[approved, approver, note])
-    print(f"{'approved' if approved else 'rejected'} {workflow_id}")
+    await handle.signal(wf.decide, args=[approved, approver, note])
+    print(f"{'approved' if approved else 'rejected'} {handle.id}")
 
 
 @click.command()
