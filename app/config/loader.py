@@ -41,6 +41,7 @@ _ENV_OVERRIDES: dict[str, str] = {
     "TEMPORAL_CLOUD_NAMESPACE": "temporal.cloud.namespace",
     "TEMPORAL_CLOUD_API_KEY": "temporal.cloud.api_key",
     "TEMPORAL_CLOUD_TLS_ENABLED": "temporal.cloud.tls_enabled",
+    "TEMPORAL_SEARCH_ATTRIBUTES_ENABLED": "temporal.search_attributes_enabled",
     # langgraph / multi-agent
     "LANGGRAPH_ENABLED": "langgraph.enabled",
     "LANGGRAPH_GRAPH_NAME": "langgraph.graph_name",
