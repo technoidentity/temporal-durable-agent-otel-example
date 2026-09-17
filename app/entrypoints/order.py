@@ -43,6 +43,7 @@ async def execute(settings: AppSettings, request: str, workflow_id: str | None, 
         open_incident_on_risk=sn.enabled and sn.open_incident_on_risk,
         risk_keywords=list(sn.risk_keywords),
         chaos=overrides.get("chaos", settings.chaos.as_spec()),
+        search_attributes_enabled=settings.temporal.search_attributes_enabled,
     )
 
     telemetry = init_telemetry(settings)
