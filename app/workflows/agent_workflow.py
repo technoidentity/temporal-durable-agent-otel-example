@@ -14,7 +14,12 @@ from temporalio import workflow
 
 with workflow.unsafe.imports_passed_through():
     from langchain_core.messages import convert_to_messages
+    from langgraph.errors import GraphRecursionError
     from temporalio.contrib.langgraph import graph
+
+# Cap agent<->tools turns so an unbounded loop fails cleanly instead of raising
+# deep inside workflow code (review M6).
+_RECURSION_LIMIT = 12
 
 
 def _last_content(messages: list) -> str:
@@ -40,7 +45,11 @@ class AgentWorkflow:
     @workflow.run
     async def run(self, request: AgentWorkflowInput) -> str:
         app = graph(request.graph_name).compile()
-        result = await app.ainvoke(
-            {"messages": [{"role": "user", "content": request.question}]}
-        )
+        try:
+            result = await app.ainvoke(
+                {"messages": [{"role": "user", "content": request.question}]},
+                {"recursion_limit": _RECURSION_LIMIT},
+            )
+        except GraphRecursionError:
+            return "The agent reached its turn limit before producing a final answer."
         return _last_content(result.get("messages", []))

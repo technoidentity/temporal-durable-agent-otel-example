@@ -34,7 +34,7 @@ class FakeClient:
         self.started = []
         self.states = {}
 
-    async def start_workflow(self, fn, inp, id, task_queue, execution_timeout):
+    async def start_workflow(self, fn, inp, id, task_queue, execution_timeout, **kwargs):
         self.started.append({"id": id, "input": inp})
         self.states[id] = {"status": "RUNNING", "pending": {"pending": True, "details": "approve me"}}
         return FakeHandle(id, self.states[id])
